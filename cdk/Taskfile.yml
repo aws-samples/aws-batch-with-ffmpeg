@@ -1,0 +1,37 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+version: "3"
+
+# CDK tasks
+tasks:
+
+  deploy-registry:
+    desc: Deploy ECR cdk stack
+    cmds:
+      - cdk deploy batch-ffmpeg-registry-stack --require-approval never
+
+  deploy-quality-metrics:
+    desc: Deploy quality metrics tools
+    cmds:
+      - cdk deploy batch-ffmpeg-metrics-stack --require-approval never
+
+  synth:
+    desc: Synth cdk stack
+    cmds:
+      - cdk synth batch-ffmpeg-stack batch-ffmpeg-api-stack batch-ffmpeg-registry-stack batch-ffmpeg-metrics-stack
+
+  deploy:
+    desc: deploy all available stacks
+    cmds:
+      - cdk deploy --all --require-approval never
+
+  destroy:
+    desc: Destroy cdk stack and virtualenv
+    cmds:
+      - cdk destroy --all --force
+      - aws ecr delete-repository --repository-name batch-ffmpeg --force || true
+      - rm -rf .venv/ || true
+      - rm -rf .task/ || true
+      - rm  -f .env || true
+      - rm -rf cdk.out || true

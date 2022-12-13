@@ -1,1 +1,84 @@
-Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+Copyright 2022 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+Licensed under the Apache License Version 2.0 (the "License"). You may not use this file except
+in compliance with the License. A copy of the License is located at http://www.apache.org/licenses/
+or in the "license" file accompanying this file. This file is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+
+**********************
+THIRD PARTY COMPONENTS
+**********************
+When you will deploy this solution, scripts will download different packages with different licenses. These packages are out of control by the developer of this script. Also, these scripts can create a non-free and unredistributable binary. By deploying and using this solution, you are fully aware of this.
+These scripts will download these third party software subject to the following copyrights:
+
+ffmpeg  : GNU Lesser General Public License (LGPL) version 2.1
+http://ffmpeg.org/legal.html
+
+ffmpeg docker images : Apache License Version 2.0
+https://github.com/jrottenberg/ffmpeg/blob/main/LICENSE
+
+libvmaf  : BSD+Patent
+https://github.com/Netflix/vmaf/blob/master/LICENSE
+
+opencore-amr : Apache License Version 2.0
+https://sourceforge.net/p/opencore-amr/code/ci/master/tree/LICENSE
+
+x264 : GNU General Public License (LGPL) version 2.0
+https://code.videolan.org/videolan/x264/-/blob/master/COPYING
+
+x265 : GNU General Public License (LGPL) version 2.0
+https://github.com/videolan/x265/blob/master/COPYING
+
+libogg : BSD-STYLE
+https://gitlab.xiph.org/xiph/ogg/-/blob/master/COPYING
+
+libopus : BSD
+https://www.opus-codec.org/license/
+
+libvorbis : BSD-STYLE
+https://gitlab.xiph.org/xiph/vorbis/-/blob/master/COPYING
+
+libtheora : BSD-STYLE
+https://gitlab.xiph.org/xiph/theora/-/blob/master/COPYING
+
+libvpx : BSD 3
+https://github.com/webmproject/libvpx/blob/main/LICENSE
+
+libwebp : BSD 3
+https://github.com/webmproject/libwebp/blob/main/COPYING
+
+libmp3lame : LGPL
+http://lame.sourceforge.net/
+
+xvid : GPL 2.0
+http://websvn.xvid.org/cvs/viewvc.cgi/trunk/xvidcore/LICENSE?view=markup
+
+fdk-aac
+https://github.com/mstorsjo/fdk-aac/blob/master/NOTICE
+
+openjpeg : BSD
+https://github.com/uclouvain/openjpeg/blob/master/LICENSE
+
+freetype : FTL or GPL version 2
+https://freetype.org/license.html
+
+fridibi 
+https://www.fribidi.org/
+
+fontconfig 
+https://gitlab.freedesktop.org/fontconfig/fontconfig/-/blob/main/COPYING
+
+libass : ISC
+https://github.com/libass/libass/blob/master/COPYING
+
+kvazaar : BSD 3
+https://github.com/ultravideo/kvazaar/blob/master/LICENSE
+
+aom :
+https://aomedia.googlesource.com/aom/+/refs/heads/main/LICENSE
+
+libpng :
+http://www.libpng.org/pub/png/src/libpng-LICENSE.txt
+
+libaribb24 : LGPL 3.0
+https://github.com/nkoriyama/aribb24/blob/master/COPYING

@@ -1,0 +1,6 @@
+from-root
+boto3
+aws-xray-sdk
+requests
+click
+ffmpeg_quality_metrics

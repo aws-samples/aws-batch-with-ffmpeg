@@ -1,0 +1,23 @@
+Content-Type: multipart/mixed; boundary="==XRAYDAEMON=="
+MIME-Version: 1.0
+
+--==XRAYDAEMON==
+Content-Type: text/x-shellscript; charset="us-ascii"
+MIME-Version: 1.0
+Content-Transfer-Encoding: 7bit
+
+#!/bin/bash
+
+arch_name="$(uname -m)"
+if [ "${arch_name}" = "aarch64" ]; then
+    echo "Running aarch64"
+    curl https://s3.eu-west-1.amazonaws.com/aws-xray-assets.eu-west-1/xray-daemon/aws-xray-daemon-arm64-3.x.rpm -o /home/ec2-user/xray.rpm
+elif [ "${arch_name}" = "arm64" ]; then
+    echo "Running arm64"
+    curl https://s3.eu-west-1.amazonaws.com/aws-xray-assets.eu-west-1/xray-daemon/aws-xray-daemon-arm64-3.x.rpm -o /home/ec2-user/xray.rpm
+else
+    echo "Running others archs"
+    curl https://s3.eu-west-1.amazonaws.com/aws-xray-assets.eu-west-1/xray-daemon/aws-xray-daemon-3.x.rpm -o /home/ec2-user/xray.rpm
+fi
+yum install -y /home/ec2-user/xray.rpm
+--==XRAYDAEMON==--

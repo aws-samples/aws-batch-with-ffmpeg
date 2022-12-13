@@ -1,0 +1,94 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+version: "3"
+
+vars:
+  AWS_DEFAULT_REGION: eu-west-1
+  
+tasks:
+  kaniko-nvidia:
+    desc: "Build Container image for nvidia including FFMPEG"
+    cmds:
+      - task: kaniko-build
+        vars:
+          VARIANT: nvidia2004
+          VERSION: 5.1
+          ARCH: amd64
+  
+  kaniko-ubuntu:
+    desc: "Build Container image for ubuntu including FFMPEG"
+    cmds:
+      - task: kaniko-build
+        vars:
+          VARIANT: ubuntu2004
+          VERSION: 5.1
+          ARCH: amd64
+  
+  kaniko-arm64:
+    desc: "Build Container image for ubuntu including FFMPEG"
+    cmds:
+      - task: kaniko-build
+        vars:
+          VARIANT: ubuntu2004
+          VERSION: 5.1
+          ARCH: arm64
+
+  docker:
+    desc: "Build Container images including FFMPEG with docker"
+    deps: [pre_build]
+    cmds:
+      - task: docker-build
+        vars:
+          VARIANT: nvidia2004-amd64
+          VERSION: 5.1
+          ARCH: linux/amd64
+      - task: docker-build
+        vars:
+          VARIANT: ubuntu2004-amd64
+          VERSION: 5.1
+          ARCH: linux/amd64
+      - task: docker-build
+        vars:
+          VARIANT: ubuntu2004-arm64
+          VERSION: 5.1
+          ARCH: linux/arm64
+
+  pre_build:
+    cmds:
+      - echo "Logging in to Amazon ECR"
+      - 
+      
+
+  docker-build:
+    cmds:
+      - echo "Building the Docker image AWS Batch FFMPEG {{.NAME}}:{{.VERSION}}-{{.VARIANT}}-{{.ARCH}} with Docker"
+      - docker build --file docker-images/{{.VERSION}}/{{.VARIANT}}/Dockerfile --platform {{.ARCH}} --tag {{.IMAGE_REPO_NAME}}:{{.VERSION}}-{{.VARIANT}} .
+      - docker tag {{.IMAGE_REPO_NAME}}:{{.VERSION}}-{{.VARIANT}} {{.AWS_ACCOUNT_ID}}.dkr.ecr.{{.AWS_DEFAULT_REGION}}.amazonaws.com/{{.IMAGE_REPO_NAME}}:{{.VERSION}}-{{.VARIANT}}
+      - echo "Pushing the Docker image"
+      - docker push {{.AWS_ACCOUNT_ID}}.dkr.ecr.{{.AWS_DEFAULT_REGION}}.amazonaws.com/{{.IMAGE_REPO_NAME}}:{{.VERSION}}-{{.VARIANT}}
+
+  kaniko-build:
+    cmds:
+      - echo "Building the Docker image AWS Batch FFMPEG {{.NAME}}:{{.VERSION}}-{{.VARIANT}} with Kaniko"
+      - mkdir -p /kaniko/.docker
+      - echo "{\"credsStore\":\"ecr-login\"}" > /kaniko/.docker/config.json
+      - /kaniko/executor --context $CI_PROJECT_DIR/application/ --dockerfile docker-images/{{.VERSION}}/{{.VARIANT}}/Dockerfile{{.EXT}}  --customPlatform=linux/{{.ARCH}} --verbosity=error --compressed-caching=false --cache=false --destination $CDK_DEPLOY_ACCOUNT.dkr.ecr.$CDK_DEPLOY_REGION.amazonaws.com/{{.IMAGE_REPO_NAME}}:{{.VERSION}}-{{.VARIANT}}-{{.ARCH}}
+
+  docker-test:
+    cmds:
+      - docker run --rm -it --env AWS_XRAY_SDK_ENABLED=False --env S3_BUCKET={{.S3_BUCKET}} -v ~/.aws:/root/.aws {{.AWS_ACCOUNT_ID}}.dkr.ecr.{{.AWS_DEFAULT_REGION}}.amazonaws.com/{{.IMAGE_REPO_NAME}}:{{.VERSION}}-{{.VARIANT}}  --input_url s3://{{.S3_BUCKET}}/tests/media-assets/norisleepingmusic2_480p.mp4 --output_url s3://{{.S3_BUCKET}}/tests/media-assets/output/docker-run.mp4 --output_file_options '-an' --name='docker'
+    vars:
+      VARIANT: nvidia2004
+      VERSION: 5.1
+
+  wrapper-test:
+    cmds:
+      - python3 ffmpeg_wrapper.py --input_url s3://{{.S3_BUCKET}}/tests/media-assets/norisleepingmusic2_480p.mp4 --output_url s3://{{.S3_BUCKET}}/tests/media-assets/output/python-run.mp4 --output_file_options '-an' --name='python'
+
+  docker-bash:
+    cmds:
+      - docker run --rm -it -v ~/.aws:/root/.aws --entrypoint=/bin/sh {{.AWS_ACCOUNT_ID}}.dkr.ecr.{{.AWS_DEFAULT_REGION}}.amazonaws.com/{{.IMAGE_REPO_NAME}}:{{.VERSION}}-{{.VARIANT}} -i
+    vars:
+      VARIANT: nvidia2004-amd64
+      VERSION: 5.1
