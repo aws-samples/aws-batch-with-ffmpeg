@@ -80,7 +80,7 @@ def export_handler(event, context):
 
     # Glue crawler
     try:
-        glue.start_crawler(Name="aws-batch-ffmpeg-crawler")
+        glue.start_crawler(Name="aws_batch_ffmpeg_crawler")
     except glue.exceptions.CrawlerRunningException:
         logging.info("Crawler already running")
 

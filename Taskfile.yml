@@ -1,24 +1,62 @@
-# https://taskfile.dev
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
 
 version: "3"
 
+dotenv: [".env", "{{.ENV}}/.env.", "{{.HOME}}/.env"]
+
 vars:
-  #GITHUB: https://github.com/aws-samples/aws-batch-with-ffmpeg.git
-  GITHUB: https://github.com/gmarchand/aws-batch-ffmpeg.git
-  DATE:
-    sh: date '+%d-%m-%Y'
-tasks:  
-  github:
-    desc: build open source package
+  IMAGE_REPO_NAME: batch-ffmpeg
+
+includes:
+  app:
+    taskfile: ./application
+    dir: ./application
+  test:
+    taskfile: ./tests
+    dir: ./
+    optional: true
+  cdk:
+    taskfile: ./cdk
+    dir: ./
+  dist:
+    taskfile: ./deployment
+    dir: ./
+    optional: true
+
+tasks:
+  venv:
+    desc: Create local python virtual env
     cmds:
-      - rm -rf dist/ || true
-      - mkdir -p dist/archive/ dist/aws-batch-ffmpeg/
-      - git tag -a "GITHUB_{{.DATE}}" -m "deployment on github"
-      - git archive --format=tar HEAD | gzip > dist/opensource_{{.DATE}}.tar.gz
-      - tar -zxvf dist/opensource_{{.DATE}}.tar.gz -C dist/archive
-      - rm dist/opensource_{{.DATE}}.tar.gz
-      - git clone {{.GITHUB}} dist/aws-batch-ffmpeg
-      - cp -R dist/archive/* dist/aws-batch-ffmpeg/
-      - cd dist/aws-batch-ffmpeg/ && git add . && git commit -m 'version {{.DATE}}' && git push || true
-      - rm -rf dist/ || true
+      - rm -rf .venv/ || true
+      - python3 -m venv .venv
+      - .venv/bin/python3 -m pip install --upgrade pip
+      - .venv/bin/pip install -r requirements.txt
+      - .venv/bin/pip install -r application/requirements.txt
+    sources:
+      - requirements.txt
+    generates:
+      - .venv/bin/activate
+
+  env:
+    desc: env. variables for scripts
+    cmds:
+      - echo 'S3_BUCKET={{.S3_BUCKET}}' >> .env
+      - echo 'IMAGE_REPO_NAME={{.IMAGE_REPO_NAME}}' >> .env
+      - echo 'AWS_DEFAULT_REGION={{.AWS_DEFAULT_REGION}}' >> .env
+      - echo 'AWS_ACCOUNT_ID={{.AWS_ACCOUNT_ID}}' >> .env
+      - echo 'API_URL={{.API_URL}}' >> .env
+    vars:
+      S3_BUCKET:
+        sh: aws cloudformation describe-stacks --stack-name batch-ffmpeg-stack --query 'Stacks[0].Outputs[?OutputKey==`S3bucket`].OutputValue' --output text || true
+      IMAGE_REPO_NAME:
+        sh: aws cloudformation describe-stacks --stack-name batch-ffmpeg-stack --query 'Stacks[0].Outputs[?OutputKey==`EcrRegistry`].OutputValue' --output text || true
+      API_URL:
+        sh: aws cloudformation describe-stacks --stack-name batch-ffmpeg-api-stack --query 'Stacks[0].Outputs[?OutputKey==`ffmpegbatchapi`].OutputValue' --output text || true
+      AWS_ACCOUNT_ID:
+        sh: aws sts get-caller-identity --query "Account" --output text || true
+      AWS_DEFAULT_REGION:
+        sh: aws configure get region || true
+    status:
+      - test -f .env
 

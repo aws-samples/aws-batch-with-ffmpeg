@@ -143,6 +143,7 @@ class BatchJobFfmpegStack(Stack):
         batch_instance_profile = iam.CfnInstanceProfile(
             self, "instance-profile", roles=[batch_instance_role.role_name]
         )
+        batch_instance_profile.node.add_dependency(batch_instance_role)
 
         batch_job_role = iam.Role(
             self,
@@ -479,11 +480,5 @@ class BatchJobFfmpegStack(Stack):
             self,
             "S3bucket",
             value=s3_bucket.bucket_name,
-            description="AWS Batch nodes can access to this S3 bucket.",
-        )
-        cdk.CfnOutput(
-            self,
-            "EcrRegistry",
-            value=ecr_registry.repository_name,
-            description="AWS Batch nodes can access to this S3 bucket.",
+            description="S3 Bucket used by the solution to upload/download assets",
         )

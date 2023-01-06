@@ -8,7 +8,7 @@ vars:
   
 tasks:
   kaniko-nvidia:
-    desc: "Build Container image for nvidia including FFMPEG"
+    desc: "Build Container image for nvidia"
     cmds:
       - task: kaniko-build
         vars:
@@ -17,7 +17,7 @@ tasks:
           ARCH: amd64
   
   kaniko-ubuntu:
-    desc: "Build Container image for ubuntu including FFMPEG"
+    desc: "Build Container image for ubuntu"
     cmds:
       - task: kaniko-build
         vars:
@@ -26,7 +26,7 @@ tasks:
           ARCH: amd64
   
   kaniko-arm64:
-    desc: "Build Container image for ubuntu including FFMPEG"
+    desc: "Build Container image for ubuntu"
     cmds:
       - task: kaniko-build
         vars:
@@ -34,31 +34,40 @@ tasks:
           VERSION: 5.1
           ARCH: arm64
 
-  docker:
-    desc: "Build Container images including FFMPEG with docker"
-    deps: [pre_build]
+  docker-nvidia:
+    desc: "Build Container images with docker for nvidia"
+    deps: [docker-login]
     cmds:
       - task: docker-build
         vars:
           VARIANT: nvidia2004-amd64
           VERSION: 5.1
           ARCH: linux/amd64
+
+  docker-amd64:
+    desc: "Build Container images with docker for amd64"
+    deps: [docker-login]
+    cmds:
       - task: docker-build
         vars:
           VARIANT: ubuntu2004-amd64
           VERSION: 5.1
           ARCH: linux/amd64
+  
+  docker-arm64:
+    desc: "Build Container images with docker for arm64"
+    deps: [docker-login]
+    cmds:
       - task: docker-build
         vars:
           VARIANT: ubuntu2004-arm64
           VERSION: 5.1
           ARCH: linux/arm64
 
-  pre_build:
+  docker-login:
     cmds:
       - echo "Logging in to Amazon ECR"
-      - 
-      
+      - aws ecr get-login-password --region {{.AWS_DEFAULT_REGION}} | docker login --username AWS --password-stdin {{.AWS_ACCOUNT_ID}}.dkr.ecr.{{.AWS_DEFAULT_REGION}}.amazonaws.com
 
   docker-build:
     cmds:

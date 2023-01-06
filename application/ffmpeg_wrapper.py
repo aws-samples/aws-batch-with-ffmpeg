@@ -221,7 +221,7 @@ def save_qm_s3(s3_client, s3_bucket, document: dict):
     """save quality metrics on Amazon S3"""
     key = (
         "metrics/ffqm/"
-        + time.strftime("%Y-%m-%d")
+        + time.strftime("year=%Y/month=%b/day=%d")
         + "/"
         + document["AWS_BATCH_JQ_NAME"]
         + "_"

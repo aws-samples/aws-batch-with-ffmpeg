@@ -37,9 +37,6 @@ class VideoBatchJob(Construct):
 
         fargate_disabled = True if (batch_compute_instancetypes or ec2_ami) else False
 
-        # Source : https://github.com/aws-samples/aws-cdk-deep-learning-image-vector-embeddings-at-scale-using-aws-batch/blob/main/batch_job_cdk/stack.py
-        # Source : https://github.com/aws-samples/aws-batch-xray/blob/main/lib/batch-xray-stack.ts
-
         self.type = type
         self.job_queue_name = "batch-ffmpeg-job-queue-" + type
         self.job_definition_name = "batch-ffmpeg-job-definition-" + type
