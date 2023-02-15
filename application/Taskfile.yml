@@ -2,9 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 version: "3"
-
-vars:
-  AWS_DEFAULT_REGION: eu-west-1
   
 tasks:
   kaniko-nvidia:
