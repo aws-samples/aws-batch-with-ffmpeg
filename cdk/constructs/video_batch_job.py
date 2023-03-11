@@ -48,7 +48,7 @@ class VideoBatchJob(Construct):
             container=batch_jobdef_container,
             parameters=batch_jobdef_parameters,
             retry_attempts=1,
-            timeout=Duration.minutes(90),
+            timeout=Duration.minutes(180),
             platform_capabilities=[
                 batch.PlatformCapabilities.EC2
                 if fargate_disabled

@@ -14,5 +14,7 @@
   ],
   "acknowledged-issue-numbers": [
     21902
-  ]
+  ],
+  "vcpu-count-max": 16,
+  "memory-mib-max":64000
 }

@@ -16,6 +16,7 @@ pytest-test-groups
 cryptography
 moto[all]
 aws-requests-auth
+PyAwsHelper
 
 pylint
 bandit

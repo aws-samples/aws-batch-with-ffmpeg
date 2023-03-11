@@ -19,7 +19,7 @@ RUN     apt-get -yqq update && \
 
 FROM base as build
 
-ENV         FFMPEG_VERSION=5.1 \
+ENV         FFMPEG_VERSION=5.1.2 \
         AOM_VERSION=v1.0.0 \
         FDKAAC_VERSION=0.1.5 \
         FONTCONFIG_VERSION=2.12.4 \
@@ -80,7 +80,7 @@ RUN      buildDeps="autoconf \
         nasm \
         perl \
         pkg-config \
-        python \
+        python3 \
         libssl-dev \
         yasm \
         zlib1g-dev" && \
@@ -132,18 +132,20 @@ RUN \
 ### x265 http://x265.org/
 ### https://bitbucket.org/multicoreware/x265_git/wiki/Home
 ### https://gist.github.com/sparrc/026ed9958502072dda749ba4e5879ee3
-# RUN \
-#         DIR=/tmp/x265 && \
-#         mkdir -p ${DIR} && \
-#         cd ${DIR} && \
-#         curl -sL https://github.com/videolan/x265/archive/refs/tags/${X265_VERSION}.tar.gz | \
-#         tar -zx && \
-#         cd x265-${X265_VERSION}/build/linux && \
-#         sed -i "/-DEXTRA_LIB/ s/$/ -DCMAKE_INSTALL_PREFIX=\${PREFIX}/" multilib.sh && \
-#         sed -i "/^cmake/ s/$/ -DENABLE_CLI=OFF/" multilib.sh && \
-#         ./multilib.sh && \
-#         make -C 8bit install && \
-#         rm -rf ${DIR}
+RUN \
+        DIR=/tmp/x265 && \
+        mkdir -p ${DIR} && \
+        cd ${DIR} && \
+        curl -sL https://github.com/videolan/x265/archive/refs/tags/${X265_VERSION}.tar.gz | \
+        tar -zx && \
+        cd x265-${X265_VERSION}/build/aarch64-linux && \
+        cmake -DCMAKE_TOOLCHAIN_FILE="crosscompile.cmake" -G "Unix Makefiles" ../../source && \
+        cmake -DCMAKE_INSTALL_PREFIX="${PREFIX}" ../../source && \
+        make && \
+        make install && \
+        rm -rf ${DIR}
+
+
 ### libogg https://www.xiph.org/ogg/
 RUN \
         DIR=/tmp/ogg && \
@@ -402,7 +404,7 @@ RUN  \
         --enable-libvpx \
         --enable-libwebp \
         --enable-libx264 \
-        #--enable-libx265 \
+        --enable-libx265 \
         --enable-nonfree \
         --enable-openssl \
         --enable-postproc \
