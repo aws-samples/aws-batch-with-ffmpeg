@@ -1,17 +1,22 @@
 
-# Deploy a managed FFMPEG pipeline using multiple Amazon EC2 families with AWS Batch
+# Create a managed FFMPEG workflow for your media jobs using AWS Batch
 
-If AWS customers wants to use FFMPEG on AWS, they have to maintain FFMPEG by themselves through an EC2 instances and develop a workflow manager to ingest and manipulate media assets. it's painfull. In the "Bitmovin video developer report 2021", to the question : "Do you use a commercial encoder or an open-source based encoder(e.g. FFMPEG)?" Bitmovin answered  : "Compared to last year, commercial encoders gained 4 percentage points. this could be due to several reasons, including the need for higher levels of support, usability, and control. [...] Commercial solutions can offer relief from steep learning curves and maintenance costs for open-source applications."
+FFMPEG is an industry standard, open source, widely used utility for handling video. FFMPEG has many capabilities, including encoding and decoding all video compression formats, encoding and decoding audio, encapsulating, and extracting audio, and video from transport streams, and many more. 
+
+If AWS customers wants to use FFMPEG on AWS, they have to maintain FFMPEG by themselves through an EC2 instance and develop a workflow manager to ingest and manipulate media assets. It's painful.
+This solution integrates FFMPEG in AWS Services to build a managed FFMPEG by AWS. This solution deploys the FFMPEG command packaged in a container and managed by AWS Batch. When finished, you will execute a FFMPEG command as a job through a REST API. 
+
+With this solution you will have a better usability and control. This solution offers relief from learning curves and maintenance costs for open-source applications.
 
 We identified two use cases:
 1. Use a managed FFMPEG solution as a toolbox to manipulate video assets
-2. Use a managed FFMPEG solution to benchmark a ffmpeg command through different EC2 families to choose the most efficient and sustainable instance to perform the command in their own workflows.
+2. Use a managed FFMPEG solution to benchmark a ffmpeg command through different EC2 families to choose the most efficient and sustainable Amazon EC2 instance to perform the command in a specific workflows.
 
 AWS Batch enables developers, scientists, and engineers to easily and efficiently run hundreds of thousands of batch computing jobs on AWS. AWS Batch dynamically provisions the optimal quantity and type of compute resources (e.g., CPU or memory optimized instances) based on the volume and specific resource requirements of the batch jobs submitted. With AWS Batch, there is no need to install and manage batch computing software or server clusters that you use to run your jobs, allowing you to focus on analyzing results and solving problems. AWS Batch plans, schedules, and executes your batch computing workloads across the full range of AWS compute services and features, such as Amazon EC2 and Spot Instances.
 
-In May 2022, AWS proposes 14 general usage instance families, 10 optimised compute instance families et 13 accelerated computes. By correlating the specifications of each instance family with FFMPEG hardware acceleration, we understand that it is possible to optimize the performance of FFMPEG with different specifications : 
+In January 2023, AWS proposes 15 general usage instance families, 11 optimised compute instance families et 14 accelerated computes. By correlating each instance family specification with FFMPEG hardware acceleration API, we understand it is possible to optimize the performance of FFMPEG: 
 - **NVIDIA** GPU-powered Amazon EC2 instances : P3 instance family comes equipped with the NVIDIA Tesla V100 GPU. G4dn instance family is powered by NVIDIA T4 GPUs and Intel Cascade Lake CPUs. These GPUs are well suited for video coding workloads and offers enhanced hardware-based encoding/decoding (NVENC/NVDEC).
-- **Xilinx** media accelerator cards : VT1 instances are powered by up to 8 Xilinx® Alveo™ U30 media accelerator cards and support up to 96 vCPUs, 192GB of memory, 25 Gbps of enhanced networking, and 19 Gbps of EBS bandwidth. The [Xilinx Video SDK includes an enhanced version of FFmpeg](https://xilinx.github.io/video-sdk/v1.5/using_ffmpeg.html) that can communicate with the hardware accelerated transcode pipeline in Xilinx devices.
+- **Xilinx** media accelerator cards : VT1 instances are powered by up to 8 Xilinx® Alveo™ U30 media accelerator cards and support up to 96 vCPUs, 192GB of memory, 25 Gbps of enhanced networking, and 19 Gbps of EBS bandwidth. The [Xilinx Video SDK includes an enhanced version of FFmpeg](https://xilinx.github.io/video-sdk/v1.5/using_ffmpeg.html) that can communicate with the hardware accelerated transcode pipeline in Xilinx devices. As [described in this benchmark](https://aws.amazon.com/fr/blogs/opensource/run-open-source-ffmpeg-at-lower-cost-and-better-performance-on-a-vt1-instance-for-vod-encoding-workloads/), VT1 instances can encode VOD assets up to 52% faster, and achieve up to 75% reduction in cost when compared to C5 and C6i instances.
 - EC2 instances powered by **Intel** : M6i/C6i instances are powered by 3rd generation Intel Xeon Scalable processors (code named Ice Lake) with an all-core turbo frequency of 3.5 GHz.
 - AWS **Graviton**-bases instances : Encoding video on C7g instances, the last [AWS Graviton processor family](https://aws.amazon.com/ec2/graviton/), costs measured 29% less for H.264 and 18% less for H.265 compared to C6i, as described in this blog post ['Optimized Video Encoding with FFmpeg on AWS Graviton Processors'](https://aws.amazon.com/blogs/opensource/optimized-video-encoding-with-ffmpeg-on-aws-graviton-processors/)
 - **AMD**-powered EC2 instances: M6a instances are powered by 3rd generation AMD EPYC processors (code named Milan).
@@ -33,7 +38,7 @@ The architecture includes 5 main components :
 1. All media assets ingested and produced are stored on a **Amazon S3** bucket.
 1. Observability is managed by **Cloudwatch** and **X-Ray**. All XRay traces are exported on Amazon S3 to benchmark which compute architecture is better for a specific FFMPEG command.
 
-![Architecture](aws-batch-ffmpeg.drawio.png)
+![Architecture](doc/aws-batch-ffmpeg.drawio.png)
 
 ## Prerequisites
 
@@ -49,7 +54,7 @@ You need the following prerequisites to set up the solution :
 
 To deploy the solution on your account, complete the following steps:
 
-1. Clone the github repository http://github.com/aws-sample/aws-batch-with-ffmpeg/
+1. Clone the github repository http://github.com/aws-samples/aws-batch-with-ffmpeg/
 1. execute this list of command : 
 
 ```bash
@@ -66,7 +71,7 @@ CDK will output the new Amazon S3 bucket and the Amazon API Gateway REST endpoin
 
 ## Use the solution
 
-We can execute FFMPEG commands with the **AWS SDKs** or AWS CLI. The solution respects the typical syntax of the FFMPEG command described in the [official documentation](https://ffmpeg.org/ffmpeg.html): 
+I execute FFMPEG commands with the **AWS SDKs** or AWS CLI. The solution respects the typical syntax of the FFMPEG command described in the [official documentation](https://ffmpeg.org/ffmpeg.html): 
 ```bash
 ffmpeg [global_options] {[input_file_options] -i input_url} ... {[output_file_options] output_url} ...
 ````
@@ -107,7 +112,7 @@ command={
 }
 ```
 
-We submit the FFMPEG command with the AWS SDK Boto3 (Python) : 
+I submit the FFMPEG command with the AWS SDK Boto3 (Python) : 
 
 ```python
 batch = boto3.client("batch")
@@ -119,7 +124,7 @@ result = batch.submit_job(
 )
 ```
 
-We can also submit the same FFMPEG command with the REST API through a HTTP POST method. You control access to this Amazon API Gateway API with [IAM permissions](https://docs.aws.amazon.com/apigateway/latest/developerguide/permissions.html) :
+I can also submit the same FFMPEG command with the REST API through a HTTP POST method. I control access to this Amazon API Gateway API with [IAM permissions](https://docs.aws.amazon.com/apigateway/latest/developerguide/permissions.html) :
 
 ```python
 # AWS Signature Version 4 Signing process with Python Requests

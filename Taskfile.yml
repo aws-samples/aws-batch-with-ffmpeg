@@ -31,8 +31,8 @@ tasks:
       - rm -rf .venv/ || true
       - python3 -m venv .venv
       - .venv/bin/python3 -m pip install --upgrade pip
-      - .venv/bin/pip install -r requirements.txt
-      - .venv/bin/pip install -r application/requirements.txt
+      - .venv/bin/pip install --quiet -r requirements.txt
+      - .venv/bin/pip install --quiet -r application/requirements.txt
     sources:
       - requirements.txt
     generates:
