@@ -1,17 +1,15 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0
-from constructs import Construct
-from aws_cdk import (
-    Duration,
-    aws_ec2 as ec2,
-    aws_batch_alpha as batch,
-)
 import aws_cdk as cdk
+from aws_cdk import Duration
+from aws_cdk import aws_batch_alpha as batch
+from aws_cdk import aws_ec2 as ec2
+from constructs import Construct
 from from_root import from_root
 
 
 class VideoBatchJob(Construct):
-    type: str
+    proc_name: str
     job_queue_name: str
     job_queue: batch.IJobQueue
     job_definition_name: str
@@ -21,7 +19,7 @@ class VideoBatchJob(Construct):
         self,
         scope: Construct,
         construct_id: str,
-        type: str,
+        proc_name: str,
         batch_compute_instancetypes,
         batch_jobdef_container,
         batch_jobdef_parameters,
@@ -32,14 +30,13 @@ class VideoBatchJob(Construct):
         ec2_vpc_subnets,
         **kwargs
     ) -> None:
-
         super().__init__(scope, construct_id, **kwargs)
 
-        fargate_disabled = True if (batch_compute_instancetypes or ec2_ami) else False
+        fargate_disabled = batch_compute_instancetypes or ec2_ami
 
-        self.type = type
-        self.job_queue_name = "batch-ffmpeg-job-queue-" + type
-        self.job_definition_name = "batch-ffmpeg-job-definition-" + type
+        self.proc_name = proc_name
+        self.job_queue_name = "batch-ffmpeg-job-queue-" + proc_name
+        self.job_definition_name = "batch-ffmpeg-job-definition-" + proc_name
 
         batch_job_definition = batch.JobDefinition(
             self,
@@ -48,7 +45,7 @@ class VideoBatchJob(Construct):
             container=batch_jobdef_container,
             parameters=batch_jobdef_parameters,
             retry_attempts=1,
-            timeout=Duration.minutes(180),
+            timeout=Duration.hours(10),
             platform_capabilities=[
                 batch.PlatformCapabilities.EC2
                 if fargate_disabled
@@ -63,7 +60,7 @@ class VideoBatchJob(Construct):
         batch_launch_template = ec2.CfnLaunchTemplate(
             self,
             "launch-template",
-            launch_template_name=type + "-batch-launch-template",
+            launch_template_name=proc_name + "-batch-launch-template",
             launch_template_data=ec2.CfnLaunchTemplate.LaunchTemplateDataProperty(
                 user_data=cdk.Fn.base64(txt)
             ),
@@ -82,7 +79,10 @@ class VideoBatchJob(Construct):
                 instance_role=batch_compute_env_instanceprofile_arn,
                 security_groups=[ec2_vpc_sg],
                 vpc_subnets=ec2_vpc_subnets,
-                compute_resources_tags={"type": type, "application": "batch-ffmpeg"}
+                compute_resources_tags={
+                    "proc_name": proc_name,
+                    "application": "batch-ffmpeg",
+                }
                 if fargate_disabled
                 else None,
                 type=batch.ComputeResourceType.SPOT

@@ -5,13 +5,12 @@ version: "3"
 
 # CDK tasks
 tasks:
-
   deploy-registry:
     desc: Deploy ECR cdk stack
     cmds:
       - cdk deploy batch-ffmpeg-registry-stack --require-approval never
 
-  deploy-quality-metrics:
+  deploy-metrics:
     desc: Deploy quality metrics tools
     cmds:
       - cdk deploy batch-ffmpeg-metrics-stack --require-approval never
@@ -25,6 +24,16 @@ tasks:
     desc: deploy all available stacks
     cmds:
       - cdk deploy --all --require-approval never
+
+  destroy-regions:
+    cmds:
+      - AWS_DEFAULT_REGION=eu-west-1 cdk destroy --all --force
+      - AWS_DEFAULT_REGION=ap-southeast-2 cdk destroy --all --force && aws ecr delete-repository --repository-name batch-ffmpeg --force
+      - AWS_DEFAULT_REGION=sa-east-1 cdk destroy --all --force
+      - AWS_DEFAULT_REGION=eu-west-3 cdk destroy --all --force
+      - AWS_DEFAULT_REGION=us-east-1 cdk destroy --all --force
+      - AWS_DEFAULT_REGION=us-west-2 cdk destroy --all --force
+      - AWS_DEFAULT_REGION=eu-central-1 cdk destroy --all --force
 
   destroy:
     desc: Destroy cdk stack and virtualenv

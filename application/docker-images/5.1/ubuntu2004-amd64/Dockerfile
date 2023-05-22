@@ -15,7 +15,8 @@ WORKDIR     /tmp/workdir
 RUN     apt-get -yqq update && \
         apt-get install -yq --no-install-recommends ca-certificates expat libgomp1 && \
         apt-get autoremove -y && \
-        apt-get clean -y
+        apt-get clean -y && \
+        rm -rf /var/lib/apt/lists/*
 
 FROM base as build
 
@@ -447,7 +448,8 @@ COPY aws aws/
 RUN apt-get -yqq update && \
         apt-get install -yq --no-install-recommends openssl libssl-dev wget python3 python3-pip && \
         apt-get autoremove -y && \
-        apt-get clean -y
+        apt-get clean -y && \
+        rm -rf /var/lib/apt/lists/*
 
 # Install fonts
 RUN mkdir -p /usr/share/fonts/truetype/ && \
@@ -455,7 +457,7 @@ RUN mkdir -p /usr/share/fonts/truetype/ && \
         fc-cache -fv
 
 COPY requirements.txt ./
-RUN pip3 install -r requirements.txt
+RUN pip3 install --no-cache-dir -r requirements.txt
 
 CMD         ["python3", "./ffmpeg_wrapper.py"]
 ENTRYPOINT  ["python3", "ffmpeg_wrapper.py"]

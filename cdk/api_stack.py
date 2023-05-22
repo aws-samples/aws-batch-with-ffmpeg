@@ -1,22 +1,22 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0
-import time
 import os
+import time
+
 import aws_cdk as cdk
+from aws_cdk import Stack
+from aws_cdk import aws_apigateway as apig
+from aws_cdk import aws_iam as iam
+from aws_cdk import aws_logs as cwlogs
 from constructs import Construct
-from aws_cdk import (
-    Stack,
-    aws_iam as iam,
-    aws_apigateway as apig,
-    aws_logs as cwlogs,
-)
+
 from cdk.constructs.video_batch_job import VideoBatchJob
 
 VideoBatchJobs = list[VideoBatchJob]
 
 
 class ApiStack(Stack):
-    """API Gateway of the solution"""
+    """API Gateway of the solution."""
 
     def __init__(
         self,
@@ -26,7 +26,6 @@ class ApiStack(Stack):
         metrics_handler,
         **kwargs,
     ) -> None:
-
         super().__init__(scope, construct_id, **kwargs)
 
         api = apig.RestApi(
@@ -66,20 +65,10 @@ class ApiStack(Stack):
                 },
             ),
         )
-        batch_response_model = api.add_model(
-            "ffmpeg-response-model",
-            content_type="application/json",
-            model_name="BatchResponse",
-            schema=apig.JsonSchema(
-                schema=apig.JsonSchemaVersion.DRAFT4,
-                title="ffmpeg-response-schema",
-                type=apig.JsonSchemaType.OBJECT,
-                properties={
-                    "job_id": apig.JsonSchema(type=apig.JsonSchemaType.STRING),
-                },
-            ),
+        account = os.environ.get(
+            "CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"]
         )
-
+        region = os.environ.get("CDK_DEPLOY_REGION", os.environ["CDK_DEFAULT_REGION"])
         api_role = iam.Role(
             self,
             "RestAPIRole",
@@ -90,9 +79,9 @@ class ApiStack(Stack):
                         iam.PolicyStatement(
                             actions=["batch:SubmitJob"],
                             resources=[
-                                f"arn:aws:batch:{os.getenv('CDK_DEFAULT_REGION')}:{os.getenv('CDK_DEFAULT_ACCOUNT')}"
+                                f"arn:aws:batch:{region}:{account}"
                                 f":job-definition/batch-ffmpeg-job-definition-*",
-                                f"arn:aws:batch:{os.getenv('CDK_DEFAULT_REGION')}:{os.getenv('CDK_DEFAULT_ACCOUNT')}"
+                                f"arn:aws:batch:{region}:{account}"
                                 f":job-queue/batch-ffmpeg-job-queue-*",
                             ],
                         )
@@ -112,12 +101,11 @@ class ApiStack(Stack):
         )
         video_tool = "ffmpeg"
         for video_batch_job in video_batch_jobs:
-
             today = time.strftime("%Y%m%d-%H%M%S")
             velocity_template = "{"
             velocity_template += (
                 '"jobName":"api-'
-                + video_batch_job.type
+                + video_batch_job.proc_name
                 + "-"
                 + video_tool
                 + "-"
@@ -163,7 +151,7 @@ class ApiStack(Stack):
             )
 
             # API Resources
-            proc_type = api.root.add_resource(video_batch_job.type)
+            proc_type = api.root.add_resource(video_batch_job.proc_name)
             command = proc_type.add_resource(video_tool)
 
             command.add_method(
@@ -174,22 +162,11 @@ class ApiStack(Stack):
                 request_models={"application/json": ffmpeg_request_model},
                 request_validator=apig.RequestValidator(
                     self,
-                    video_batch_job.type + "-body-validator",
+                    video_batch_job.proc_name + "-body-validator",
                     rest_api=api,
                     validate_request_body=True,
                 ),
             )
-
-        # Quality metrics
-        api_integration = apig.LambdaIntegration(
-            metrics_handler,
-            request_templates={"application/json": '{"statusCode":"200"}'},
-        )
-        metrics = api.root.add_resource("metrics")
-        metrics_export = metrics.add_resource("export")
-        metrics_export.add_method(
-            "GET", api_integration, authorization_type=apig.AuthorizationType.IAM
-        )
 
         cdk.CfnOutput(
             self,

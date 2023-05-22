@@ -3,7 +3,7 @@
 from urllib.parse import urlparse
 
 
-class S3Url(object):
+class S3Url:
     """
     >>> s = S3Url("s3://bucket/hello/world")
     >>> s.bucket

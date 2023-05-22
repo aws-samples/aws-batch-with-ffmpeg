@@ -1,6 +1,6 @@
-from-root
-boto3
 aws-xray-sdk
-requests
+boto3
 click
 ffmpeg_quality_metrics
+from-root
+requests

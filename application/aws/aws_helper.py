@@ -1,23 +1,24 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0
 import os
-import requests
+
 import boto3
+import requests
 from botocore.exceptions import ClientError
 
 
 def s3_key_exist(client, bucket, key):
-    """return True if exist, else None"""
+    """Return True if exist, else None."""
     try:
         client.head_object(Bucket=bucket, Key=key)
-        return True
     except ClientError as exc:
         if exc.response["Error"]["Code"] != "404":
             return False
+    return True
 
 
 def detect_running_region():
-    """Dynamically determine the region"""
+    """Dynamically determine the region."""
     easy_checks = [
         # check if set through ENV vars
         os.environ.get("AWS_REGION"),

@@ -1,0 +1,7 @@
+version v0.0.2:
+- Add FFmpeg Quality Metrics to AWS Glue Crawler
+- Create AWS Athena Views for PSNR, SSIM, VMAF quality metrics
+- Optimize code linting
+- Dynamically look after AWS EC2 Instance types per AWS Region
+- Add AWS Service Catalog Registry
+- Document architecture decisions

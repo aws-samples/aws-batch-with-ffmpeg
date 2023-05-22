@@ -59,4 +59,3 @@ tasks:
         sh: aws configure get region || true
     status:
       - test -f .env
-
