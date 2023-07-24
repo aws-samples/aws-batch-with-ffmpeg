@@ -81,6 +81,10 @@ tasks:
       - echo "{\"credsStore\":\"ecr-login\"}" > /kaniko/.docker/config.json
       - /kaniko/executor --context $CI_PROJECT_DIR/application/ --dockerfile docker-images/{{.VERSION}}/{{.VARIANT}}/Dockerfile{{.EXT}}  --customPlatform=linux/{{.ARCH}} --verbosity=error --compressed-caching=false --cache=false --destination $CDK_DEPLOY_ACCOUNT.dkr.ecr.$CDK_DEPLOY_REGION.amazonaws.com/{{.IMAGE_REPO_NAME}}:{{.VERSION}}-{{.VARIANT}}-{{.ARCH}}
 
+  kaniko-test:
+    cmds:
+      - docker run --rm -it -v ~/.aws:/root/.aws --entrypoint=/bin/sh gcr.io/kaniko-project/executor:debug -i
+
   docker-test:
     cmds:
       - docker run --rm -it --env AWS_XRAY_SDK_ENABLED=False --env S3_BUCKET={{.S3_BUCKET}} -v ~/.aws:/root/.aws {{.AWS_ACCOUNT_ID}}.dkr.ecr.{{.AWS_DEFAULT_REGION}}.amazonaws.com/{{.IMAGE_REPO_NAME}}:{{.VERSION}}-{{.VARIANT}}  --input_url s3://{{.S3_BUCKET}}/tests/media-assets/norisleepingmusic2_480p.mp4 --output_url s3://{{.S3_BUCKET}}/tests/media-assets/output/docker-run.mp4 --output_file_options '-an' --name='docker'

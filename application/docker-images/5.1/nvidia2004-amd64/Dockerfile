@@ -9,7 +9,7 @@
 # Guillaume Marchand - AWS - gmarchan@amazon.fr
 #
 
-FROM    nvidia/cuda:11.4.1-devel-ubuntu20.04 AS devel-base
+FROM    nvidia/cuda:11.4.3-devel-ubuntu20.04 AS devel-base
 
 ENV	    NVIDIA_DRIVER_CAPABILITIES compute,utility,video
 ENV	    DEBIAN_FRONTEND=nonintercative
@@ -21,7 +21,7 @@ RUN     apt-get -yqq update && \
         apt-get clean -y && \
         rm -rf /var/lib/apt/lists/*
 
-FROM        nvidia/cuda:11.4.1-runtime-ubuntu20.04 AS runtime-base
+FROM        nvidia/cuda:11.4.3-runtime-ubuntu20.04 AS runtime-base
 
 ENV	    NVIDIA_DRIVER_CAPABILITIES compute,utility,video
 ENV	    DEBIAN_FRONTEND=nonintercative
@@ -34,11 +34,11 @@ RUN     apt-get -yqq update && \
         rm -rf /var/lib/apt/lists/*
 
 
-FROM  devel-base as build
+FROM    devel-base as build
 
-ENV        NVIDIA_HEADERS_VERSION=11.1.5.0
+ENV     NVIDIA_HEADERS_VERSION=11.1.5.2
 
-ENV         FFMPEG_VERSION=5.1.2 \
+ENV     FFMPEG_VERSION=5.1.3 \
         AOM_VERSION=v1.0.0 \
         FDKAAC_VERSION=0.1.5 \
         FONTCONFIG_VERSION=2.12.4 \
@@ -63,22 +63,22 @@ ENV         FFMPEG_VERSION=5.1.2 \
         LIBVMAF_VERSION=2.1.1 \
         SRC=/usr/local
 
-ARG         FREETYPE_SHA256SUM="5eab795ebb23ac77001cfb68b7d4d50b5d6c7469247b0b01b2c953269f658dac freetype-2.10.4.tar.gz"
-ARG         FRIBIDI_SHA256SUM="3fc96fa9473bd31dcb5500bdf1aa78b337ba13eb8c301e7c28923fea982453a8 0.19.7.tar.gz"
-ARG         LIBASS_SHA256SUM="8fadf294bf701300d4605e6f1d92929304187fca4b8d8a47889315526adbafd7 0.13.7.tar.gz"
-ARG         OGG_SHA256SUM="e19ee34711d7af328cb26287f4137e70630e7261b17cbe3cd41011d73a654692 libogg-1.3.2.tar.gz"
-ARG         OPUS_SHA256SUM="77db45a87b51578fbc49555ef1b10926179861d854eb2613207dc79d9ec0a9a9 opus-1.2.tar.gz"
-ARG         THEORA_SHA256SUM="40952956c47811928d1e7922cda3bc1f427eb75680c3c37249c91e949054916b libtheora-1.1.1.tar.gz"
-ARG         VORBIS_SHA256SUM="6efbcecdd3e5dfbf090341b485da9d176eb250d893e3eb378c428a2db38301ce libvorbis-1.3.5.tar.gz"
-ARG         XVID_SHA256SUM="4e9fd62728885855bc5007fe1be58df42e5e274497591fec37249e1052ae316f xvidcore-1.3.4.tar.gz"
-ARG         LIBARIBB24_SHA256SUM="f61560738926e57f9173510389634d8c06cabedfa857db4b28fb7704707ff128 v1.0.3.tar.gz"
+ARG     FREETYPE_SHA256SUM="5eab795ebb23ac77001cfb68b7d4d50b5d6c7469247b0b01b2c953269f658dac freetype-2.10.4.tar.gz"
+ARG     FRIBIDI_SHA256SUM="3fc96fa9473bd31dcb5500bdf1aa78b337ba13eb8c301e7c28923fea982453a8 0.19.7.tar.gz"
+ARG     LIBASS_SHA256SUM="8fadf294bf701300d4605e6f1d92929304187fca4b8d8a47889315526adbafd7 0.13.7.tar.gz"
+ARG     OGG_SHA256SUM="e19ee34711d7af328cb26287f4137e70630e7261b17cbe3cd41011d73a654692 libogg-1.3.2.tar.gz"
+ARG     OPUS_SHA256SUM="77db45a87b51578fbc49555ef1b10926179861d854eb2613207dc79d9ec0a9a9 opus-1.2.tar.gz"
+ARG     THEORA_SHA256SUM="40952956c47811928d1e7922cda3bc1f427eb75680c3c37249c91e949054916b libtheora-1.1.1.tar.gz"
+ARG     VORBIS_SHA256SUM="6efbcecdd3e5dfbf090341b485da9d176eb250d893e3eb378c428a2db38301ce libvorbis-1.3.5.tar.gz"
+ARG     XVID_SHA256SUM="4e9fd62728885855bc5007fe1be58df42e5e274497591fec37249e1052ae316f xvidcore-1.3.4.tar.gz"
+ARG     LIBARIBB24_SHA256SUM="f61560738926e57f9173510389634d8c06cabedfa857db4b28fb7704707ff128 v1.0.3.tar.gz"
 
 
-ARG         LD_LIBRARY_PATH=/opt/ffmpeg/lib
-ARG         MAKEFLAGS="-j2"
-ARG         PKG_CONFIG_PATH="/opt/ffmpeg/share/pkgconfig:/opt/ffmpeg/lib/pkgconfig:/opt/ffmpeg/lib64/pkgconfig"
-ARG         PREFIX=/opt/ffmpeg
-ARG         LD_LIBRARY_PATH="/opt/ffmpeg/lib:/opt/ffmpeg/lib64"
+ARG     LD_LIBRARY_PATH=/opt/ffmpeg/lib
+ARG     MAKEFLAGS="-j2"
+ARG     PKG_CONFIG_PATH="/opt/ffmpeg/share/pkgconfig:/opt/ffmpeg/lib/pkgconfig:/opt/ffmpeg/lib64/pkgconfig"
+ARG     PREFIX=/opt/ffmpeg
+ARG     LD_LIBRARY_PATH="/opt/ffmpeg/lib:/opt/ffmpeg/lib64"
 
 
 ARG DEBIAN_FRONTEND=noninteractive
@@ -108,7 +108,7 @@ RUN      buildDeps="autoconf \
 
 RUN \
         DIR=/tmp/nv-codec-headers && \
-        git clone https://github.com/FFmpeg/nv-codec-headers ${DIR} && \
+        git clone https://git.videolan.org/git/ffmpeg/nv-codec-headers.git ${DIR} && \
         cd ${DIR} && \
         git checkout n${NVIDIA_HEADERS_VERSION} && \
         make PREFIX="${PREFIX}" && \
