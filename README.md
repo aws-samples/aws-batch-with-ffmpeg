@@ -49,7 +49,7 @@ The architecture includes 5 main components :
 
 ### Diagram
 
-![Architecture](doc/aws-batch-FFmpeg.drawio.png)
+![Architecture](doc/aws-batch-ffmpeg.drawio.png)
 
 ## Prerequisites
 
