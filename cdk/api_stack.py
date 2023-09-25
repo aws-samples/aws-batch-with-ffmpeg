@@ -35,6 +35,8 @@ class ApiStack(Stack):
             description="FFMPEG managed by AWS Batch",
             deploy_options=apig.StageOptions(
                 metrics_enabled=True,
+                caching_enabled=True,
+                cache_data_encrypted=True,
                 logging_level=apig.MethodLoggingLevel.INFO,
                 tracing_enabled=True,
                 access_log_destination=apig.LogGroupLogDestination(
@@ -160,11 +162,13 @@ class ApiStack(Stack):
                 method_responses=[batch_method_response],
                 authorization_type=apig.AuthorizationType.IAM,
                 request_models={"application/json": ffmpeg_request_model},
+                request_parameters=None,
                 request_validator=apig.RequestValidator(
                     self,
                     video_batch_job.proc_name + "-body-validator",
                     rest_api=api,
                     validate_request_body=True,
+                    validate_request_parameters=True,
                 ),
             )
 

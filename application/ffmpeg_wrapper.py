@@ -5,10 +5,10 @@ import logging
 import os
 import shlex
 import shutil
+import subprocess  # nosec B404
 import sys
 import tempfile
 import time
-from subprocess import PIPE, Popen
 
 import boto3
 import click
@@ -39,6 +39,7 @@ def main(
     metrics."""
 
     aws_region = aws_helper.detect_running_region()
+    logging.info("AWS Region : %s", aws_region)
     ssm_client = boto3.client("ssm", region_name=aws_region)
     s3_client = boto3.client("s3", region_name=aws_region)
 
@@ -105,7 +106,8 @@ def main(
     segment.put_annotation("AWS_BATCH_CE_NAME", aws_batch_ce_name)
 
     # Prepare temp files
-    tmp_dir = tempfile.TemporaryDirectory(prefix="ffmpeg_workdir_").name + "/"
+    with tempfile.TemporaryDirectory(prefix="ffmpeg_workdir_") as tmpdirname:
+        tmp_dir = tmpdirname + "/"
     logging.info("tmp dir is %s", tmp_dir)
     parse_output_url = S3Url(output_url)
     bucket_output = parse_output_url.bucket
@@ -142,15 +144,22 @@ def main(
     subsegment = xray_recorder.begin_subsegment("cmd-execution")
     subsegment.put_metadata("command", " ".join(command_list))
 
-    p = Popen(command_list, stdout=PIPE, stderr=PIPE)
-    output, error = p.communicate()
+    p = subprocess.run(
+        command_list,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        shell=False,
+        cwd=None,
+        timeout=None,
+        check=False,
+        encoding=None,
+    )  # nosec B603
     if p.returncode != 0:
         logging.error("ffmpeg failed - return code : %d", p.returncode)
-        logging.error("ffmpeg failed - output : %s", output)
-        logging.error("ffmpeg failed - error : %s", error)
+        logging.error("ffmpeg failed - output : %s", p.stdout)
+        logging.error("ffmpeg failed - error : %s", p.stderr)
         sys.exit(1)
-
-    logging.info("ffmpeg succeeded %d %s %s", p.returncode, output, error)
+    logging.info("ffmpeg succeeded %d %s %s", p.returncode, p.stdout, p.stderr)
     xray_recorder.end_subsegment()
 
     # Uploading media output to Amazon S3

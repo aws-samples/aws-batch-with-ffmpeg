@@ -9,7 +9,6 @@ import timeit
 from datetime import datetime, timezone
 
 import boto3
-from from_root import from_root
 
 LOGLEVEL = os.environ.get("LOGLEVEL", "INFO").upper()
 logging.basicConfig(level=LOGLEVEL)
@@ -58,9 +57,8 @@ def save_segments(batch_iterator):
 
 def update_athena_views():
     """Create or update athena views after Glue Crawler stopped."""
-    ddl_files = glob.glob(
-        str(from_root("application", "functions", "athena_ddl", "*.ddl"))
-    )
+    ddl_files = glob.glob(os.path.dirname(__file__) + "/athena_ddl/*.ddl")
+
     for ddl_file in ddl_files:
         with open(ddl_file) as ddl:
             logging.info("Running athena query of %s", ddl_file)
@@ -134,12 +132,13 @@ def export_handler(event, context):
     crawler_name = "aws_batch_ffmpeg_crawler"
     try:
         glue.start_crawler(Name=crawler_name)
+        logging.info("Starting Glue crawler")
     except glue.exceptions.CrawlerRunningException:
-        logging.info("Crawler is %s already running", crawler_name)
+        logging.info("Glue crawler is %s already running", crawler_name)
 
     # Wait Crawler
     wait_crawler_running(crawler_name=crawler_name)
-
+    logging.info("Updating Athena views")
     # Update Athena views
     update_athena_views()
     return {

@@ -38,10 +38,11 @@ class MetricsStack(Stack):
             self,
             "metrics",
             description="Export X-Ray traces, start Glue Crawler, Create/ update Athena views",
-            code=faas.Code.from_asset(str(from_root("application", "functions"))),
+            code=faas.Code.from_asset(str(from_root("application", "dist_lambda.zip"))),
             handler="metrics_lambda.export_handler",
             timeout=Duration.seconds(600),
-            runtime=faas.Runtime.PYTHON_3_9,
+            runtime=faas.Runtime.PYTHON_3_11,
+            runtime_management_mode=faas.RuntimeManagementMode.AUTO,
             environment=dict(S3_BUCKET=s3_bucket.bucket_name),
         )
 
@@ -135,7 +136,6 @@ class MetricsStack(Stack):
         )
         s3_bucket.grant_read(crawler_role)
 
-        # Glue crawler
         crawler = cfn_glue.CfnCrawler(
             self,
             "crawler",

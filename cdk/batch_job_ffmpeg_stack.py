@@ -4,9 +4,8 @@ import copy
 import os
 
 import aws_cdk as cdk
-import boto3
 from aws_cdk import Stack
-from aws_cdk import aws_batch_alpha as batch
+from aws_cdk import aws_batch as batch
 from aws_cdk import aws_ec2 as ec2
 from aws_cdk import aws_ecs as ecs
 from aws_cdk import aws_iam as iam
@@ -32,59 +31,27 @@ class BatchJobFfmpegStack(Stack):
 
     # AWS Batch Jobs
     video_batch_jobs = []
+
+    _xilinx_regions = ["us-west-2", "us-east-1", "eu-west-1"]
+
     _region = os.environ.get("CDK_DEPLOY_REGION", os.environ["CDK_DEFAULT_REGION"])
-
-    def _get_instance_types_available(
-        self,
-        instance_families: list,
-        instance_sizes: list = [
-            ec2.InstanceSize.LARGE,
-            ec2.InstanceSize.XLARGE,
-            ec2.InstanceSize.XLARGE2,
-        ],
-    ):
-        """instance_families : List of instance families wanted
-        return the list of instance types wanted available in the current region
-        """
-
-        # Get all instances wanted
-        client = boto3.client("ec2")
-        instance_types_wanted_str = []
-        result = []
-        for instance_family in instance_families:
-            for instance_size in instance_sizes:
-                instance_type = ec2.InstanceType.of(instance_family, instance_size)
-                instance_types_wanted_str.append(instance_type.to_string())
-
-        # Get all instances available in the region
-        response = client.describe_instance_type_offerings(
-            LocationType="region",
-            Filters=[
-                {
-                    "Name": "location",
-                    "Values": [
-                        self._region,
-                    ],
-                },
-            ],
-        )
-        instance_types_available_str = []
-        for instance_type_offerings in response["InstanceTypeOfferings"]:
-            instance_types_available_str.append(instance_type_offerings["InstanceType"])
-
-        # Get instances wanted available in the region
-        result_str = list(
-            set(instance_types_available_str).intersection(
-                set(instance_types_wanted_str)
-            )
-        )
-        result = list(map(lambda x: ec2.InstanceType(x), result_str))
-        return result
+    _account = os.environ.get("CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"])
 
     def __init__(
         self, scope: Construct, construct_id: str, ecr_registry: RegistryStack, **kwargs
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
+
+        s3_bucket = s3.Bucket(
+            self,
+            id="batch-ffmpeg-bucket",
+            enforce_ssl=True,
+            versioned=True,
+            # @TODO enable access logs without S3 ACLS
+            # server_access_logs_prefix="access-logs/",
+            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
+            encryption=s3.BucketEncryption.S3_MANAGED,
+        )
 
         # VPC
         vpc = ec2.Vpc(
@@ -108,15 +75,6 @@ class BatchJobFfmpegStack(Stack):
             security_group_name="aws-batch-ffmpeg-sg-compute-env",
         )
 
-        s3_bucket = s3.Bucket(
-            self,
-            id="batch-ffmpeg-bucket",
-            # public_read_access=False,
-            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
-            # server_access_logs_prefix="access-logs/",
-            enforce_ssl=True,
-            encryption=s3.BucketEncryption.S3_MANAGED,
-        )
         # VPC Flow Logs
         log_group = logs.LogGroup(self, "flow-logs-group")
         role = iam.Role(
@@ -179,6 +137,8 @@ class BatchJobFfmpegStack(Stack):
         batch_instance_role = iam.Role(
             self,
             "batch-job-instance-role",
+            # role_name="batch-ffmpeg-instance-role",
+            description="AWS Batch with FFMPEG : IAM Instance Role used by Instance Profile in AWS Batch Compute Environment",
             assumed_by=iam.CompositePrincipal(
                 iam.ServicePrincipal("ec2.amazonaws.com"),
                 iam.ServicePrincipal("ecs.amazonaws.com"),
@@ -195,18 +155,18 @@ class BatchJobFfmpegStack(Stack):
         )
         s3_bucket.grant_read_write(batch_instance_role)
 
-        batch_instance_profile = iam.CfnInstanceProfile(
-            self, "instance-profile", roles=[batch_instance_role.role_name]
-        )
-        batch_instance_profile.node.add_dependency(batch_instance_role)
+        # batch_instance_profile = iam.InstanceProfile(
+        #     self, "instance-profile",
+        #     instance_profile_name="batch-ffmpeg-instance-profile",
+        #     role=batch_instance_role
+        # )
+        # batch_instance_profile.node.add_dependency(batch_instance_role)
 
-        account = os.environ.get(
-            "CDK_DEPLOY_ACCOUNT", os.environ["CDK_DEFAULT_ACCOUNT"]
-        )
-        region = os.environ.get("CDK_DEPLOY_REGION", os.environ["CDK_DEFAULT_REGION"])
         batch_job_role = iam.Role(
             self,
             "batch-job-role",
+            # role_name="batch-ffmpeg-job-role",
+            description="AWS Batch with FFMPEG : IAM Role for Batch Container Job Definition",
             assumed_by=iam.CompositePrincipal(
                 iam.ServicePrincipal("ecs.amazonaws.com"),
                 iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
@@ -231,9 +191,9 @@ class BatchJobFfmpegStack(Stack):
                                 "kms:Decrypt",
                             ],
                             resources=[
-                                f"arn:aws:ssm:{region}:{account}"
+                                f"arn:aws:ssm:{self._region}:{self._account}"
                                 f":parameter/batch-ffmpeg/*",
-                                f"arn:aws:ssm:{region}:{account}"
+                                f"arn:aws:ssm:{self._region}:{self._account}"
                                 f":parameter/batch-ffmpeg",
                             ],
                         )
@@ -246,7 +206,9 @@ class BatchJobFfmpegStack(Stack):
 
         batch_execution_role = iam.Role(
             self,
-            "batch-execution-role",
+            "batch-ffmpeg-job-execution-role",
+            # role_name="batch-ffmpeg-job-execution-role",
+            description="AWS Batch with FFMPEG : IAMExecution Role for Batch Container Job Definition",
             assumed_by=iam.CompositePrincipal(
                 iam.ServicePrincipal("ecs.amazonaws.com"),
                 iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
@@ -261,77 +223,131 @@ class BatchJobFfmpegStack(Stack):
             ],
         )
 
-        # AMIs
+        # EC2 > AMIs
         ecs_amd64_ami = ec2.MachineImage.from_ssm_parameter(
-            "/aws/service/ecs/optimized-ami/amazon-linux-2/recommended/image_id"
+            "/aws/service/ecs/optimized-ami/amazon-linux-2023/recommended/image_id"
         )
         ecs_arm64_ami = ec2.MachineImage.from_ssm_parameter(
-            "/aws/service/ecs/optimized-ami/amazon-linux-2/arm64/recommended/image_id"
+            "/aws/service/ecs/optimized-ami/amazon-linux-2023/arm64/recommended/image_id"
         )
         ecs_nvidia_ami = ec2.MachineImage.from_ssm_parameter(
             "/aws/service/ecs/optimized-ami/amazon-linux-2/gpu/recommended/image_id"
         )
-
-        # Compute Environments
-        batch_compute_nvidia_instancetypes = self._get_instance_types_available(
-            [
-                ec2.InstanceClass.GRAPHICS4_NVME_DRIVE_HIGH_PERFORMANCE,
-                ec2.InstanceClass.GRAPHICS4_AMD_NVME_DRIVE,
-            ]
-        )
-
-        # Instance types
-        batch_compute_intel_instancetypes = self._get_instance_types_available(
-            [
-                ec2.InstanceClass.COMPUTE5,
-                ec2.InstanceClass.COMPUTE5_HIGH_PERFORMANCE,
-                ec2.InstanceClass.COMPUTE5_NVME_DRIVE,
-                ec2.InstanceClass.COMPUTE6_INTEL,
-                ec2.InstanceClass.COMPUTE6_INTEL_HIGH_PERFORMANCE,
-                ec2.InstanceClass.COMPUTE6_INTEL_NVME_DRIVE,
-                ec2.InstanceClass.STANDARD5,
-                ec2.InstanceClass.STANDARD5_HIGH_PERFORMANCE,
-                ec2.InstanceClass.STANDARD5_NVME_DRIVE,
-                ec2.InstanceClass.STANDARD6_INTEL,
-                ec2.InstanceClass.STANDARD6_INTEL_NVME_DRIVE,
-            ]
-        )
-
-        batch_compute_arm_instancetypes = self._get_instance_types_available(
-            [
-                ec2.InstanceClass.COMPUTE6_GRAVITON2,
-                ec2.InstanceClass.STANDARD6_GRAVITON,
-            ]
-        )
-        if self._region != "ap-southeast-2":
-            # Graviton 3 is available in this region but not yet in AWS Batch
-            graviton_three = self._get_instance_types_available(
-                [
-                    ec2.InstanceClass.COMPUTE7_GRAVITON3,
-                    ec2.InstanceClass.STANDARD7_GRAVITON,
-                ]
+        ecs_xilinx_ami = None
+        if self._region in self._xilinx_regions:
+            # AWS Marketplace : "AMD Xilinx Video SDK AMI with ECS support for VT1 Instances (AL2)"
+            ecs_xilinx_ami = ec2.MachineImage.from_ssm_parameter(
+                "/aws/service/marketplace/prod-sw4gdej5auini/3.0.0"
             )
+
+        # EC2 > Launch template
+        # with open(from_root("cdk", "constructs", "user_data.txt")) as f:
+        #     txt = f.read()
+        # batch_launch_template = ec2.LaunchTemplate(
+        #     self,
+        #     "launch-template",
+        #     launch_template_name="batch-ffmpeg-launch-template",
+        #     user_data=ec2.UserData.custom(txt),
+        #     http_endpoint=False,
+        #     http_tokens=ec2.LaunchTemplateHttpTokens.REQUIRED,
+        # )
+
+        # AWS Batch > Compute Environment : Instance classes
+
+        # nvidia
+        batch_compute_instance_classes_nvidia = [ec2.InstanceClass.G4DN]
+        if self._region not in ["eu-west-3"]:
+            instances_classes_not_available = [ec2.InstanceClass.G5]
             # Concatenate all sequences
-            batch_compute_arm_instancetypes = [
-                *batch_compute_arm_instancetypes,
-                *graviton_three,
+            batch_compute_instance_classes_nvidia = [
+                *batch_compute_instance_classes_nvidia,
+                *instances_classes_not_available,
             ]
 
-        batch_compute_amd_instancetypes = self._get_instance_types_available(
-            [
-                ec2.InstanceClass.COMPUTE5_AMD,
-                ec2.InstanceClass.COMPUTE5_AMD_NVME_DRIVE,
-                ec2.InstanceClass.COMPUTE6_AMD,
-                ec2.InstanceClass.STANDARD5_AMD,
-                ec2.InstanceClass.STANDARD5_AMD_NVME_DRIVE,
+        # intel
+        batch_compute_instance_classes_intel = [
+            ec2.InstanceClass.C5,
+            ec2.InstanceClass.C5N,
+            ec2.InstanceClass.C5D,
+            ec2.InstanceClass.C6I,
+            ec2.InstanceClass.C6IN,
+            ec2.InstanceClass.M5,
+            ec2.InstanceClass.M5D,
+            ec2.InstanceClass.M6I,
+        ]
+        if self._region not in [
+            "ap-south-1",
+            "ap-southeast-2",
+            "eu-west-3",
+            "sa-east-1",
+        ]:
+            instances_classes_not_available = [
+                ec2.InstanceClass.M5N,
+                ec2.InstanceClass.C6ID,
+                ec2.InstanceClass.M6ID,
+                # @TODO Waiting deployment
+                # ec2.InstanceClass.M7I,
             ]
-        )
-        batch_compute_xilinx_instancetypes = self._get_instance_types_available(
-            [
-                ec2.InstanceClass.VIDEO_TRANSCODING1,
-            ],
-            [ec2.InstanceSize.XLARGE3],
-        )
+            # Concatenate all sequences
+            batch_compute_instance_classes_intel = [
+                *batch_compute_instance_classes_intel,
+                *instances_classes_not_available,
+            ]
+
+        # arm
+        batch_compute_instances_classes_arm = [
+            ec2.InstanceClass.C6G,
+            ec2.InstanceClass.C6GD,
+            ec2.InstanceClass.C6GN,
+            ec2.InstanceClass.M6G,
+        ]
+        if self._region not in [
+            "ap-southeast-2",
+            "ap-south-1",
+            "eu-central-1",
+            "sa-east-1",
+            "eu-west-3",
+            "sa-east-1",
+        ]:
+            instances_classes_not_available = [
+                ec2.InstanceClass.M6GD,
+                ec2.InstanceClass.C7G,
+                # @TODO Waiting deployment
+                # ec2.InstanceClass.C7GD,
+                ec2.InstanceClass.M7G,
+                # @TODO Waiting deployment
+                # ec2.InstanceClass.M7GD,
+            ]
+            # Concatenate all sequences
+            batch_compute_instances_classes_arm = [
+                *batch_compute_instances_classes_arm,
+                *instances_classes_not_available,
+            ]
+
+        # amd
+        batch_compute_instances_classes_amd = [
+            ec2.InstanceClass.C5A,
+            ec2.InstanceClass.M5A,
+            ec2.InstanceClass.M5AD,
+        ]
+        if self._region not in ["ap-south-1", "eu-west-3"]:
+            instances_classes_not_available = [
+                ec2.InstanceClass.C5AD,
+                ec2.InstanceClass.C6A,
+                ec2.InstanceClass.M6A,
+                # @TODO Waiting deployment
+                # ec2.InstanceClass.M7A,
+            ]
+            # Concatenate all sequences
+            batch_compute_instances_classes_amd = [
+                *batch_compute_instances_classes_amd,
+                *instances_classes_not_available,
+            ]
+
+        # batch_compute_instances_classes_xilinx = [ec2.InstanceClass.VT1]
+        batch_compute_instances_types_xilinx = [
+            ec2.InstanceType.of(ec2.InstanceClass.VT1, ec2.InstanceSize.XLARGE3)
+        ]
 
         ffmpeg_python_script_command = [
             "--global_options",
@@ -355,136 +371,198 @@ class BatchJobFfmpegStack(Stack):
             "output_url": "null",
             "name": "null",
         }
+
+        # AWS Batch : Job Definition > Container
         job_definition_container_env = {
             "AWS_XRAY_SDK_ENABLED": "true",
             "S3_BUCKET": s3_bucket.bucket_name,
         }
 
-        # Containers
         nvidia_tag = "5.1-nvidia2004-amd64"
-        batch_jobdef_nvidia_container = batch.JobDefinitionContainer(
+        batch_jobdef_nvidia_container = batch.EcsEc2ContainerDefinition(
+            self,
+            "container-def-nvidia",
             image=ecs.ContainerImage.from_ecr_repository(ecr_registry, nvidia_tag),
             command=ffmpeg_python_script_command,
             environment=job_definition_container_env,
+            execution_role=batch_execution_role,
             job_role=batch_job_role,
-            gpu_count=1,
-            vcpus=2,
-            memory_limit_mib=8192,
+            gpu=1,
+            cpu=2,
+            memory=cdk.Size.mebibytes(8192),
         )
         amd64_tag = "5.1-ubuntu2004-amd64"
-        batch_jobdef_amd64_container = batch.JobDefinitionContainer(
+        batch_jobdef_amd64_container = batch.EcsEc2ContainerDefinition(
+            self,
+            "container-def-amd64",
             image=ecs.ContainerImage.from_ecr_repository(ecr_registry, amd64_tag),
             command=ffmpeg_python_script_command,
             environment=job_definition_container_env,
+            execution_role=batch_execution_role,
             job_role=batch_job_role,
-            gpu_count=None,
-            vcpus=2,
-            memory_limit_mib=8192,
+            gpu=None,
+            cpu=2,
+            memory=cdk.Size.mebibytes(8192),
         )
 
-        batch_jobdef_fargate_container = batch.JobDefinitionContainer(
+        arm64_tag = "5.1-ubuntu2004-arm64"
+        batch_jobdef_arm64_container = batch.EcsEc2ContainerDefinition(
+            self,
+            "container-def-arm64",
+            image=ecs.ContainerImage.from_ecr_repository(ecr_registry, arm64_tag),
+            command=ffmpeg_python_script_command,
+            environment=job_definition_container_env,
+            execution_role=batch_execution_role,
+            job_role=batch_job_role,
+            gpu=None,
+            cpu=2,
+            memory=cdk.Size.mebibytes(8192),
+        )
+        batch_jobdef_fargate_container = batch.EcsFargateContainerDefinition(
+            self,
+            "container-def-fargate",
             image=ecs.ContainerImage.from_ecr_repository(ecr_registry, amd64_tag),
             command=ffmpeg_python_script_command,
             environment=job_definition_container_env,
-            gpu_count=None,
-            vcpus=2,
-            memory_limit_mib=8192,
-            platform_version=ecs.FargatePlatformVersion.LATEST,
+            cpu=2,
+            memory=cdk.Size.mebibytes(8192),
+            fargate_platform_version=ecs.FargatePlatformVersion.LATEST,
             execution_role=batch_execution_role,
             job_role=batch_job_role,
         )
 
-        arm64_tag = "5.1-ubuntu2004-arm64"
-        batch_jobdef_arm64_container = batch.JobDefinitionContainer(
+        batch_jobdef_fargate_arm_container = batch.EcsFargateContainerDefinition(
+            self,
+            "container-def-fargate-arm",
             image=ecs.ContainerImage.from_ecr_repository(ecr_registry, arm64_tag),
             command=ffmpeg_python_script_command,
             environment=job_definition_container_env,
+            cpu=2,
+            memory=cdk.Size.mebibytes(8192),
+            fargate_platform_version=ecs.FargatePlatformVersion.LATEST,
+            execution_role=batch_execution_role,
             job_role=batch_job_role,
-            gpu_count=0,
-            vcpus=2,
-            memory_limit_mib=8192,
         )
 
-        # AWS Batch job definition, queue, compute Environment
-        if batch_compute_nvidia_instancetypes:
-            ffmpeg_nvidia_job = VideoBatchJob(
-                self,
-                construct_id="nvidia-job",
-                proc_name="nvidia",
-                ec2_ami=ecs_nvidia_ami,
-                ec2_vpc=vpc,
-                ec2_vpc_sg=sg_batch,
-                ec2_vpc_subnets=subnets,
-                batch_compute_instancetypes=batch_compute_nvidia_instancetypes,
-                batch_jobdef_container=batch_jobdef_nvidia_container,
-                batch_jobdef_parameters=ffmpeg_python_script_default_values,
-                batch_compute_env_instanceprofile_arn=batch_instance_profile.attr_arn,
-            )
-            self.video_batch_jobs.append(ffmpeg_nvidia_job)
+        xilinx_tag = "4.4-xilinx2004-amd64"
+        # https://docs.aws.amazon.com/AmazonECS/latest/developerguide/ecs-vt1.html
+        xilinx_linux_parameters = batch.LinuxParameters(self, "xilinx-linux-param")
+        xilinx_linux_parameters.add_devices(
+            batch.Device(
+                container_path="/sys/bus/pci/devices",
+                host_path="/sys/bus/pci/devices",
+                permissions=[
+                    batch.DevicePermission.READ,
+                    batch.DevicePermission.WRITE,
+                ],
+            ),
+            batch.Device(
+                container_path="/dev/dri",
+                host_path="/dev/dri",
+                permissions=[
+                    batch.DevicePermission.READ,
+                    batch.DevicePermission.WRITE,
+                ],
+            ),
+        )
+        job_definition_container_env_xilinx = {
+            "XILINX_VISIBLE_DEVICES": "0,1",
+        }
+        job_definition_container_env_xilinx = {
+            **job_definition_container_env_xilinx,
+            **job_definition_container_env,
+        }
+        batch_jobdef_xilinx_container = batch.EcsEc2ContainerDefinition(
+            self,
+            "container-def-xilinx",
+            image=ecs.ContainerImage.from_ecr_repository(ecr_registry, xilinx_tag),
+            command=ffmpeg_python_script_command,
+            linux_parameters=xilinx_linux_parameters,
+            environment=job_definition_container_env_xilinx,
+            job_role=batch_job_role,
+            gpu=None,
+            cpu=2,
+            memory=cdk.Size.mebibytes(8192),
+            privileged=True,
+        )
 
-        if batch_compute_xilinx_instancetypes:
+        # AWS Batch > Job definition, Queue, Compute Environment
+        ffmpeg_nvidia_job = VideoBatchJob(
+            self,
+            construct_id="nvidia-job",
+            proc_name="nvidia",
+            ec2_ami=ecs_nvidia_ami,
+            ec2_vpc=vpc,
+            ec2_vpc_sg=sg_batch,
+            ec2_vpc_subnets=subnets,
+            batch_compute_instance_classes=batch_compute_instance_classes_nvidia,
+            batch_jobdef_container=batch_jobdef_nvidia_container,
+            batch_jobdef_parameters=ffmpeg_python_script_default_values,
+            batch_compute_env_instance_role=batch_instance_role,
+        )
+        self.video_batch_jobs.append(ffmpeg_nvidia_job)
+
+        if self._region in self._xilinx_regions:
             ffmpeg_xilinx_job = VideoBatchJob(
                 self,
                 construct_id="xilinx-job",
                 proc_name="xilinx",
-                ec2_ami=ecs_amd64_ami,
+                ec2_ami=ecs_xilinx_ami,
                 ec2_vpc=vpc,
                 ec2_vpc_sg=sg_batch,
                 ec2_vpc_subnets=subnets,
-                batch_compute_instancetypes=batch_compute_xilinx_instancetypes,
-                batch_jobdef_container=batch_jobdef_amd64_container,
+                batch_compute_instance_classes=None,
+                batch_compute_instance_types=batch_compute_instances_types_xilinx,
+                batch_jobdef_container=batch_jobdef_xilinx_container,
                 batch_jobdef_parameters=ffmpeg_python_script_default_values,
-                batch_compute_env_instanceprofile_arn=batch_instance_profile.attr_arn,
+                batch_compute_env_instance_role=batch_instance_role,
             )
             self.video_batch_jobs.append(ffmpeg_xilinx_job)
 
-        if batch_compute_intel_instancetypes:
-            ffmpeg_intel_job = VideoBatchJob(
-                self,
-                construct_id="intel-job",
-                proc_name="intel",
-                ec2_ami=ecs_amd64_ami,
-                ec2_vpc=vpc,
-                ec2_vpc_sg=sg_batch,
-                ec2_vpc_subnets=subnets,
-                batch_compute_instancetypes=batch_compute_intel_instancetypes,
-                batch_jobdef_container=batch_jobdef_amd64_container,
-                batch_jobdef_parameters=ffmpeg_python_script_default_values,
-                batch_compute_env_instanceprofile_arn=batch_instance_profile.attr_arn,
-            )
-            self.video_batch_jobs.append(ffmpeg_intel_job)
+        ffmpeg_intel_job = VideoBatchJob(
+            self,
+            construct_id="intel-job",
+            proc_name="intel",
+            ec2_ami=ecs_amd64_ami,
+            ec2_vpc=vpc,
+            ec2_vpc_sg=sg_batch,
+            ec2_vpc_subnets=subnets,
+            batch_compute_instance_classes=batch_compute_instance_classes_intel,
+            batch_jobdef_container=batch_jobdef_amd64_container,
+            batch_jobdef_parameters=ffmpeg_python_script_default_values,
+            batch_compute_env_instance_role=batch_instance_role,
+        )
+        self.video_batch_jobs.append(ffmpeg_intel_job)
 
-        if batch_compute_amd_instancetypes:
-            ffmpeg_amd_job = VideoBatchJob(
-                self,
-                construct_id="amd-job",
-                proc_name="amd",
-                ec2_ami=ecs_amd64_ami,
-                ec2_vpc=vpc,
-                ec2_vpc_sg=sg_batch,
-                ec2_vpc_subnets=subnets,
-                batch_compute_instancetypes=batch_compute_amd_instancetypes,
-                batch_jobdef_container=batch_jobdef_amd64_container,
-                batch_jobdef_parameters=ffmpeg_python_script_default_values,
-                batch_compute_env_instanceprofile_arn=batch_instance_profile.attr_arn,
-            )
-            self.video_batch_jobs.append(ffmpeg_amd_job)
+        ffmpeg_amd_job = VideoBatchJob(
+            self,
+            construct_id="amd-job",
+            proc_name="amd",
+            ec2_ami=ecs_amd64_ami,
+            ec2_vpc=vpc,
+            ec2_vpc_sg=sg_batch,
+            ec2_vpc_subnets=subnets,
+            batch_compute_instance_classes=batch_compute_instances_classes_amd,
+            batch_jobdef_container=batch_jobdef_amd64_container,
+            batch_jobdef_parameters=ffmpeg_python_script_default_values,
+            batch_compute_env_instance_role=batch_instance_role,
+        )
+        self.video_batch_jobs.append(ffmpeg_amd_job)
 
-        if batch_compute_arm_instancetypes:
-            ffmpeg_arm_job = VideoBatchJob(
-                self,
-                construct_id="arm-job",
-                proc_name="arm",
-                ec2_ami=ecs_arm64_ami,
-                ec2_vpc=vpc,
-                ec2_vpc_sg=sg_batch,
-                ec2_vpc_subnets=subnets,
-                batch_compute_instancetypes=batch_compute_arm_instancetypes,
-                batch_jobdef_container=batch_jobdef_arm64_container,
-                batch_jobdef_parameters=ffmpeg_python_script_default_values,
-                batch_compute_env_instanceprofile_arn=batch_instance_profile.attr_arn,
-            )
-            self.video_batch_jobs.append(ffmpeg_arm_job)
+        ffmpeg_arm_job = VideoBatchJob(
+            self,
+            construct_id="arm-job",
+            proc_name="arm",
+            ec2_ami=ecs_arm64_ami,
+            ec2_vpc=vpc,
+            ec2_vpc_sg=sg_batch,
+            ec2_vpc_subnets=subnets,
+            batch_compute_instance_classes=batch_compute_instances_classes_arm,
+            batch_jobdef_container=batch_jobdef_arm64_container,
+            batch_jobdef_parameters=ffmpeg_python_script_default_values,
+            batch_compute_env_instance_role=batch_instance_role,
+        )
+        self.video_batch_jobs.append(ffmpeg_arm_job)
 
         ffmpeg_fargate_job = VideoBatchJob(
             self,
@@ -494,12 +572,28 @@ class BatchJobFfmpegStack(Stack):
             ec2_vpc=vpc,
             ec2_vpc_sg=sg_batch,
             ec2_vpc_subnets=subnets,
-            batch_compute_instancetypes=None,
+            batch_compute_instance_classes=None,
             batch_jobdef_container=batch_jobdef_fargate_container,
             batch_jobdef_parameters=ffmpeg_python_script_default_values,
-            batch_compute_env_instanceprofile_arn=None,
+            batch_compute_env_instance_role=None,
         )
         self.video_batch_jobs.append(ffmpeg_fargate_job)
+
+        # @TODO Waiting : https://github.com/aws/aws-cdk/issues/26484 and https://github.com/aws/aws-cdk/pull/26506
+        # ffmpeg_fargate_arm_job = VideoBatchJob(
+        #     self,
+        #     construct_id="fargate-arm-job",
+        #     proc_name="fargate-arm",
+        #     ec2_ami=None,
+        #     ec2_vpc=vpc,
+        #     ec2_vpc_sg=sg_batch,
+        #     ec2_vpc_subnets=subnets,
+        #     batch_compute_instance_classes=None,
+        #     batch_jobdef_container=batch_jobdef_fargate_arm_container,
+        #     batch_jobdef_parameters=ffmpeg_python_script_default_values,
+        #     batch_compute_env_instanceprofile=None,
+        # )
+        # self.video_batch_jobs.append(ffmpeg_fargate_arm_job)
 
         self.s3_bucket = s3_bucket
 

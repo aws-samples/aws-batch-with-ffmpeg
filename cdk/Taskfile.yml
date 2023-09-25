@@ -5,39 +5,56 @@ version: "3"
 
 # CDK tasks
 tasks:
+  build-lambda:
+    cmds:
+      - mkdir -p application/dist
+      - pip install --quiet --target application/dist -r application/functions/requirements.txt
+      - cp -r application/functions/* application/dist
+      - cd application/dist && zip -qqr ../dist_lambda.zip .
+      - rm -rf application/dist
+
   deploy-registry:
     desc: Deploy ECR cdk stack
+    deps: [build-lambda]
     cmds:
       - cdk deploy batch-ffmpeg-registry-stack --require-approval never
 
   deploy-metrics:
-    desc: Deploy quality metrics tools
+    deps: [build-lambda]
     cmds:
       - cdk deploy batch-ffmpeg-metrics-stack --require-approval never
 
   synth:
     desc: Synth cdk stack
+    deps: [build-lambda]
     cmds:
       - cdk synth batch-ffmpeg-stack batch-ffmpeg-api-stack batch-ffmpeg-registry-stack batch-ffmpeg-metrics-stack
 
   deploy:
     desc: deploy all available stacks
+    deps: [build-lambda]
     cmds:
+      - cdk bootstrap
       - cdk deploy --all --require-approval never
 
   destroy-regions:
     cmds:
-      - AWS_DEFAULT_REGION=eu-west-1 cdk destroy --all --force
-      - AWS_DEFAULT_REGION=ap-southeast-2 cdk destroy --all --force && aws ecr delete-repository --repository-name batch-ffmpeg --force
-      - AWS_DEFAULT_REGION=sa-east-1 cdk destroy --all --force
-      - AWS_DEFAULT_REGION=eu-west-3 cdk destroy --all --force
-      - AWS_DEFAULT_REGION=us-east-1 cdk destroy --all --force
-      - AWS_DEFAULT_REGION=us-west-2 cdk destroy --all --force
-      - AWS_DEFAULT_REGION=eu-central-1 cdk destroy --all --force
+      - export AWS_DEFAULT_REGION=ap-southeast-2 && python3 cdk/src/appregistry_delete.py && cdk destroy --all --force && aws ecr delete-repository --repository-name batch-ffmpeg --force || true
+      - export AWS_DEFAULT_REGION=ap-south-1 && python3 cdk/src/appregistry_delete.py && cdk destroy --all --force && aws ecr delete-repository --repository-name batch-ffmpeg --force || true
+      - export AWS_DEFAULT_REGION=sa-east-1 && python3 cdk/src/appregistry_delete.py && cdk destroy --all --force && aws ecr delete-repository --repository-name batch-ffmpeg --force || true
+      - export AWS_DEFAULT_REGION=eu-west-3 && python3 cdk/src/appregistry_delete.py && cdk destroy --all --force && aws ecr delete-repository --repository-name batch-ffmpeg --force || true
+      - export AWS_DEFAULT_REGION=us-east-1 && python3 cdk/src/appregistry_delete.py && cdk destroy --all --force && aws ecr delete-repository --repository-name batch-ffmpeg --force || true
+      - export AWS_DEFAULT_REGION=us-west-2 && python3 cdk/src/appregistry_delete.py && cdk destroy --all --force && aws ecr delete-repository --repository-name batch-ffmpeg --force || true
+      - export AWS_DEFAULT_REGION=eu-central-1 && python3 cdk/src/appregistry_delete.py && cdk destroy --all --force && aws ecr delete-repository --repository-name batch-ffmpeg --force || true
+      - export AWS_DEFAULT_REGION=""
+
+  destroy-light:
+    - cdk destroy batch-ffmpeg-api-stack batch-ffmpeg-metrics-stack batch-ffmpeg-stack
 
   destroy:
     desc: Destroy cdk stack and virtualenv
     cmds:
+      - python3 cdk/src/appregistry_delete.py
       - cdk destroy --all --force
       - aws ecr delete-repository --repository-name batch-ffmpeg --force || true
       - rm -rf .venv/ || true

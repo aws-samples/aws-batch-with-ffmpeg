@@ -35,7 +35,7 @@ batch_stack = BatchJobFfmpegStack(
 metrics_stack = MetricsStack(
     app, "batch-ffmpeg-metrics-stack", s3_bucket=batch_stack.s3_bucket, env=env
 )
-ApiStack(
+api_stack = ApiStack(
     app,
     "batch-ffmpeg-api-stack",
     video_batch_jobs=batch_stack.video_batch_jobs,
@@ -68,6 +68,8 @@ cdk_nag.NagSuppressions.add_resource_suppressions(
             applies_to=[
                 f"Resource::arn:aws:batch:{region}:{account}"
                 ":job-queue/batch-ffmpeg-job-queue-*",
+                f"Resource::arn:<AWS::Partition>:logs:{region}:{account}"
+                ":log-group:/aws/batch/job:*",
                 f"Resource::arn:aws:batch:{region}:{account}"
                 ":job-definition/batch-ffmpeg-job-definition-*",
                 f"Resource::arn:aws:ssm:{region}:{account}"
@@ -103,4 +105,8 @@ application = appreg.ApplicationAssociator(
         )
     ],
 )
+application.node.add_dependency(registry_stack)
+application.node.add_dependency(metrics_stack)
+application.node.add_dependency(api_stack)
+application.node.add_dependency(batch_stack)
 app.synth()

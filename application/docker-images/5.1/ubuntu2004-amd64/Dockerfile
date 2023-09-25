@@ -13,7 +13,7 @@ FROM        ubuntu:20.04 AS base
 WORKDIR     /tmp/workdir
 
 RUN     apt-get -yqq update && \
-        apt-get install -yq --no-install-recommends ca-certificates expat libgomp1 && \
+        apt-get install -yq --no-install-recommends ca-certificates expat libgomp1 software-properties-common && \
         apt-get autoremove -y && \
         apt-get clean -y && \
         rm -rf /var/lib/apt/lists/*
@@ -444,12 +444,16 @@ WORKDIR /opt/aws-batch-ffmpeg/batch
 COPY DroidSansMono.ttf ffmpeg_wrapper.py ./
 COPY aws aws/
 
-# Install Python
-RUN apt-get -yqq update && \
-        apt-get install -yq --no-install-recommends openssl libssl-dev wget python3 python3-pip && \
-        apt-get autoremove -y && \
-        apt-get clean -y && \
-        rm -rf /var/lib/apt/lists/*
+# Install Python 3
+ARG PYTHON_VERSION=3.11
+RUN add-apt-repository ppa:deadsnakes/ppa -y \
+    && apt-get install -yqq --fix-missing --no-install-recommends curl python${PYTHON_VERSION} python${PYTHON_VERSION}-dev python${PYTHON_VERSION}-distutils python${PYTHON_VERSION}-venv python-is-python3 \
+    && apt-get clean -y \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -sS https://bootstrap.pypa.io/get-pip.py | python${PYTHON_VERSION} \
+    && pip install --no-cache-dir --upgrade pip \
+    && update-alternatives --install /usr/bin/python python /usr/bin/python${PYTHON_VERSION} 1 \
+    && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1
 
 # Install fonts
 RUN mkdir -p /usr/share/fonts/truetype/ && \
@@ -459,5 +463,5 @@ RUN mkdir -p /usr/share/fonts/truetype/ && \
 COPY requirements.txt ./
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-CMD         ["python3", "./ffmpeg_wrapper.py"]
+CMD ["--help"]
 ENTRYPOINT  ["python3", "ffmpeg_wrapper.py"]

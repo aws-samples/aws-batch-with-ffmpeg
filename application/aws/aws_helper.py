@@ -3,8 +3,8 @@
 import os
 
 import boto3
-import requests
 from botocore.exceptions import ClientError
+from ec2_metadata import ec2_metadata
 
 
 def s3_key_exist(client, bucket, key):
@@ -31,10 +31,5 @@ def detect_running_region():
         if region:
             return region
 
-    # else query an external service
-    # https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instance-identity-documents.html
-    response = requests.get(
-        "http://169.254.169.254/latest/dynamic/instance-identity/document", timeout=5
-    )
-    response_json = response.json()
-    return response_json.get("region")
+    # else query the EC2 metadata API
+    return ec2_metadata.region

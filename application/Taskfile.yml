@@ -3,7 +3,16 @@
 
 version: "3"
 
+vars:
+  DOCKER_EXE: podman # Choose between docker cli or podman
+
 tasks:
+  default:
+    cmds:
+      - echo '{{.DOCKER_EXE}}'
+      - |
+        {{.DOCKER_EXE}} version
+
   kaniko-nvidia:
     desc: "Build Container image for nvidia"
     cmds:
@@ -11,6 +20,15 @@ tasks:
         vars:
           VARIANT: nvidia2004
           VERSION: 5.1
+          ARCH: amd64
+
+  kaniko-xilinx:
+    desc: "Build Container image for xilinx"
+    cmds:
+      - task: kaniko-build
+        vars:
+          VARIANT: xilinx2004
+          VERSION: 4.4
           ARCH: amd64
 
   kaniko-ubuntu:
@@ -30,6 +48,16 @@ tasks:
           VARIANT: ubuntu2004
           VERSION: 5.1
           ARCH: arm64
+
+  docker-xilinx:
+    desc: "Build Container image for xilinx"
+    deps: [docker-login]
+    cmds:
+      - task: docker-build
+        vars:
+          VARIANT: xilinx2004-amd64
+          VERSION: 4.4
+          ARCH: linux/amd64
 
   docker-nvidia:
     desc: "Build Container images with docker for nvidia"
@@ -64,15 +92,18 @@ tasks:
   docker-login:
     cmds:
       - echo "Logging in to Amazon ECR"
-      - aws ecr get-login-password --region {{.AWS_DEFAULT_REGION}} | docker login --username AWS --password-stdin {{.AWS_ACCOUNT_ID}}.dkr.ecr.{{.AWS_DEFAULT_REGION}}.amazonaws.com
+      - aws ecr get-login-password --region {{.AWS_DEFAULT_REGION}} | {{.DOCKER_EXE}} login --username AWS --password-stdin {{.AWS_ACCOUNT_ID}}.dkr.ecr.{{.AWS_DEFAULT_REGION}}.amazonaws.com
 
   docker-build:
     cmds:
       - echo "Building the Docker image AWS Batch FFMPEG {{.NAME}}:{{.VERSION}}-{{.VARIANT}}-{{.ARCH}} with Docker"
-      - docker build --file docker-images/{{.VERSION}}/{{.VARIANT}}/Dockerfile --platform {{.ARCH}} --tag {{.IMAGE_REPO_NAME}}:{{.VERSION}}-{{.VARIANT}} .
-      - docker tag {{.IMAGE_REPO_NAME}}:{{.VERSION}}-{{.VARIANT}} {{.AWS_ACCOUNT_ID}}.dkr.ecr.{{.AWS_DEFAULT_REGION}}.amazonaws.com/{{.IMAGE_REPO_NAME}}:{{.VERSION}}-{{.VARIANT}}
+      - |
+        {{.DOCKER_EXE}} build --file docker-images/{{.VERSION}}/{{.VARIANT}}/Dockerfile --platform {{.ARCH}} --tag {{.IMAGE_REPO_NAME}}:{{.VERSION}}-{{.VARIANT}} .
+      - |
+        {{.DOCKER_EXE}} tag {{.IMAGE_REPO_NAME}}:{{.VERSION}}-{{.VARIANT}} {{.AWS_ACCOUNT_ID}}.dkr.ecr.{{.AWS_DEFAULT_REGION}}.amazonaws.com/{{.IMAGE_REPO_NAME}}:{{.VERSION}}-{{.VARIANT}}
       - echo "Pushing the Docker image"
-      - docker push {{.AWS_ACCOUNT_ID}}.dkr.ecr.{{.AWS_DEFAULT_REGION}}.amazonaws.com/{{.IMAGE_REPO_NAME}}:{{.VERSION}}-{{.VARIANT}}
+      - |
+        {{.DOCKER_EXE}} push {{.AWS_ACCOUNT_ID}}.dkr.ecr.{{.AWS_DEFAULT_REGION}}.amazonaws.com/{{.IMAGE_REPO_NAME}}:{{.VERSION}}-{{.VARIANT}}
 
   kaniko-build:
     cmds:
@@ -83,14 +114,15 @@ tasks:
 
   kaniko-test:
     cmds:
-      - docker run --rm -it -v ~/.aws:/root/.aws --entrypoint=/bin/sh gcr.io/kaniko-project/executor:debug -i
+      - kaniko run --rm -it -v ~/.aws:/root/.aws --entrypoint=/bin/sh gcr.io/kaniko-project/executor:debug -i
 
   docker-test:
     cmds:
-      - docker run --rm -it --env AWS_XRAY_SDK_ENABLED=False --env S3_BUCKET={{.S3_BUCKET}} -v ~/.aws:/root/.aws {{.AWS_ACCOUNT_ID}}.dkr.ecr.{{.AWS_DEFAULT_REGION}}.amazonaws.com/{{.IMAGE_REPO_NAME}}:{{.VERSION}}-{{.VARIANT}}  --input_url s3://{{.S3_BUCKET}}/tests/media-assets/norisleepingmusic2_480p.mp4 --output_url s3://{{.S3_BUCKET}}/tests/media-assets/output/docker-run.mp4 --output_file_options '-an' --name='docker'
+      - |
+        {{.DOCKER_EXE}} run --rm -it --env AWS_XRAY_SDK_ENABLED=False --env S3_BUCKET={{.S3_BUCKET}} -v ~/.aws:/root/.aws {{.AWS_ACCOUNT_ID}}.dkr.ecr.{{.AWS_DEFAULT_REGION}}.amazonaws.com/{{.IMAGE_REPO_NAME}}:{{.VERSION}}-{{.VARIANT}}  --input_url s3://{{.S3_BUCKET}}/tests/media-assets/norisleepingmusic2_480p.mp4 --output_url s3://{{.S3_BUCKET}}/tests/media-assets/output/docker-run.mp4 --output_file_options '-an' --name='docker'
     vars:
-      VARIANT: nvidia2004
-      VERSION: 5.1
+      VARIANT: xilinx2004-amd64
+      VERSION: 4.4
 
   wrapper-test:
     cmds:
@@ -98,7 +130,8 @@ tasks:
 
   docker-bash:
     cmds:
-      - docker run --rm -it -v ~/.aws:/root/.aws --entrypoint=/bin/sh {{.AWS_ACCOUNT_ID}}.dkr.ecr.{{.AWS_DEFAULT_REGION}}.amazonaws.com/{{.IMAGE_REPO_NAME}}:{{.VERSION}}-{{.VARIANT}} -i
+      - |
+        {{.DOCKER_EXE}} run --rm -it --entrypoint=/bin/sh ubuntu:20.04 -i
     vars:
-      VARIANT: nvidia2004-amd64
+      VARIANT: ubuntu-amd64
       VERSION: 5.1

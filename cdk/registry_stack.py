@@ -10,12 +10,18 @@ from constructs import Construct
 class RegistryStack(Stack):
     """Container registry of the solution."""
 
+    ecr_registry = None
+
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
         # Containers definition
         ecr_registry = ecr.Repository(
-            self, "ecr", repository_name="batch-ffmpeg", image_scan_on_push=True
+            self,
+            "ecr",
+            repository_name="batch-ffmpeg",
+            image_scan_on_push=True,
+            encryption=ecr.RepositoryEncryption.AES_256,
         )
         self.ecr_registry = ecr_registry
 
