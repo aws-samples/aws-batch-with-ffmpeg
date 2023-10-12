@@ -86,7 +86,7 @@ tasks:
       - task: docker-build
         vars:
           VARIANT: ubuntu2004-arm64
-          VERSION: 5.1
+          VERSION: 6.0
           ARCH: linux/arm64
 
   docker-login:

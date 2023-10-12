@@ -1,6 +1,6 @@
 # Create a managed FFmpeg workflow for your media jobs using AWS Batch
 
-_Blog post : <https://aws.amazon.com/blogs/opensource/create-a-managed-FFmpeg-workflow-for-your-media-jobs-using-aws-batch/>_
+_Blog post : <https://aws.amazon.com/blogs/opensource/create-a-managed-ffmpeg-workflow-for-your-media-jobs-using-aws-batch/>_
 
 FFmpeg is an industry standard, open source, widely used utility for handling video. FFmpeg has many capabilities, including encoding and decoding all video compression formats, encoding and decoding audio, encapsulating, and extracting audio, and video from transport streams, and many more.
 
