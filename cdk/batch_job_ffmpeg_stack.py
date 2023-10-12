@@ -378,7 +378,7 @@ class BatchJobFfmpegStack(Stack):
             "S3_BUCKET": s3_bucket.bucket_name,
         }
 
-        nvidia_tag = "5.1-nvidia2004-amd64"
+        nvidia_tag = "6.0-nvidia2004-amd64"
         batch_jobdef_nvidia_container = batch.EcsEc2ContainerDefinition(
             self,
             "container-def-nvidia",
@@ -391,7 +391,7 @@ class BatchJobFfmpegStack(Stack):
             cpu=2,
             memory=cdk.Size.mebibytes(8192),
         )
-        amd64_tag = "5.1-ubuntu2004-amd64"
+        amd64_tag = "6.0-ubuntu2004-amd64"
         batch_jobdef_amd64_container = batch.EcsEc2ContainerDefinition(
             self,
             "container-def-amd64",
@@ -405,7 +405,7 @@ class BatchJobFfmpegStack(Stack):
             memory=cdk.Size.mebibytes(8192),
         )
 
-        arm64_tag = "5.1-ubuntu2004-arm64"
+        arm64_tag = "6.0-ubuntu2004-arm64"
         batch_jobdef_arm64_container = batch.EcsEc2ContainerDefinition(
             self,
             "container-def-arm64",

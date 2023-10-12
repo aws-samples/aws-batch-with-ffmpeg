@@ -38,14 +38,15 @@ tasks:
       - cdk deploy --all --require-approval never
 
   destroy-regions:
+    deps: [build-lambda]
     cmds:
-      - export AWS_DEFAULT_REGION=ap-southeast-2 && python3 cdk/src/appregistry_delete.py && cdk destroy --all --force && aws ecr delete-repository --repository-name batch-ffmpeg --force || true
-      - export AWS_DEFAULT_REGION=ap-south-1 && python3 cdk/src/appregistry_delete.py && cdk destroy --all --force && aws ecr delete-repository --repository-name batch-ffmpeg --force || true
-      - export AWS_DEFAULT_REGION=sa-east-1 && python3 cdk/src/appregistry_delete.py && cdk destroy --all --force && aws ecr delete-repository --repository-name batch-ffmpeg --force || true
-      - export AWS_DEFAULT_REGION=eu-west-3 && python3 cdk/src/appregistry_delete.py && cdk destroy --all --force && aws ecr delete-repository --repository-name batch-ffmpeg --force || true
-      - export AWS_DEFAULT_REGION=us-east-1 && python3 cdk/src/appregistry_delete.py && cdk destroy --all --force && aws ecr delete-repository --repository-name batch-ffmpeg --force || true
-      - export AWS_DEFAULT_REGION=us-west-2 && python3 cdk/src/appregistry_delete.py && cdk destroy --all --force && aws ecr delete-repository --repository-name batch-ffmpeg --force || true
-      - export AWS_DEFAULT_REGION=eu-central-1 && python3 cdk/src/appregistry_delete.py && cdk destroy --all --force && aws ecr delete-repository --repository-name batch-ffmpeg --force || true
+      - export AWS_DEFAULT_REGION=ap-southeast-2 && python3 cdk/src/appregistry_delete.py && cdk destroy --all --force && (aws ecr delete-repository --repository-name batch-ffmpeg --force || true)
+      - export AWS_DEFAULT_REGION=ap-south-1 && python3 cdk/src/appregistry_delete.py && cdk destroy --all --force && (aws ecr delete-repository --repository-name batch-ffmpeg --force || true)
+      - export AWS_DEFAULT_REGION=sa-east-1 && python3 cdk/src/appregistry_delete.py && cdk destroy --all --force && (aws ecr delete-repository --repository-name batch-ffmpeg --force || true)
+      - export AWS_DEFAULT_REGION=eu-west-3 && python3 cdk/src/appregistry_delete.py && cdk destroy --all --force && (aws ecr delete-repository --repository-name batch-ffmpeg --force || true)
+      - export AWS_DEFAULT_REGION=us-east-1 && python3 cdk/src/appregistry_delete.py && cdk destroy --all --force && (aws ecr delete-repository --repository-name batch-ffmpeg --force || true)
+      - export AWS_DEFAULT_REGION=us-west-2 && python3 cdk/src/appregistry_delete.py && cdk destroy --all --force && (aws ecr delete-repository --repository-name batch-ffmpeg --force || true)
+      - export AWS_DEFAULT_REGION=eu-central-1 && python3 cdk/src/appregistry_delete.py && cdk destroy --all --force && (aws ecr delete-repository --repository-name batch-ffmpeg --force || true)
       - export AWS_DEFAULT_REGION=""
 
   destroy-light:

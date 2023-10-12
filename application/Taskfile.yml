@@ -19,7 +19,7 @@ tasks:
       - task: kaniko-build
         vars:
           VARIANT: nvidia2004
-          VERSION: 5.1
+          VERSION: 6.0
           ARCH: amd64
 
   kaniko-xilinx:
@@ -37,7 +37,7 @@ tasks:
       - task: kaniko-build
         vars:
           VARIANT: ubuntu2004
-          VERSION: 5.1
+          VERSION: 6.0
           ARCH: amd64
 
   kaniko-arm64:
@@ -46,7 +46,7 @@ tasks:
       - task: kaniko-build
         vars:
           VARIANT: ubuntu2004
-          VERSION: 5.1
+          VERSION: 6.0
           ARCH: arm64
 
   docker-xilinx:
@@ -66,7 +66,7 @@ tasks:
       - task: docker-build
         vars:
           VARIANT: nvidia2004-amd64
-          VERSION: 5.1
+          VERSION: 6.0
           ARCH: linux/amd64
 
   docker-amd64:
@@ -76,7 +76,7 @@ tasks:
       - task: docker-build
         vars:
           VARIANT: ubuntu2004-amd64
-          VERSION: 5.1
+          VERSION: 6.0
           ARCH: linux/amd64
 
   docker-arm64:
@@ -108,8 +108,6 @@ tasks:
   kaniko-build:
     cmds:
       - echo "Building the Docker image AWS Batch FFMPEG {{.NAME}}:{{.VERSION}}-{{.VARIANT}} with Kaniko"
-      - mkdir -p /kaniko/.docker
-      - echo "{\"credsStore\":\"ecr-login\"}" > /kaniko/.docker/config.json
       - /kaniko/executor --context $CI_PROJECT_DIR/application/ --dockerfile docker-images/{{.VERSION}}/{{.VARIANT}}/Dockerfile{{.EXT}}  --customPlatform=linux/{{.ARCH}} --verbosity=error --compressed-caching=false --cache=false --destination $CDK_DEPLOY_ACCOUNT.dkr.ecr.$CDK_DEPLOY_REGION.amazonaws.com/{{.IMAGE_REPO_NAME}}:{{.VERSION}}-{{.VARIANT}}-{{.ARCH}}
 
   kaniko-test:
@@ -129,9 +127,11 @@ tasks:
       - python3 ffmpeg_wrapper.py --input_url s3://{{.S3_BUCKET}}/tests/media-assets/norisleepingmusic2_480p.mp4 --output_url s3://{{.S3_BUCKET}}/tests/media-assets/output/python-run.mp4 --output_file_options '-an' --name='python'
 
   docker-bash:
+    deps: [docker-login]
     cmds:
       - |
-        {{.DOCKER_EXE}} run --rm -it --entrypoint=/bin/sh ubuntu:20.04 -i
+        {{.DOCKER_EXE}} run --rm -it --entrypoint=/bin/sh nvidia/cuda:12.2.0-devel-ubuntu20.04 -i
     vars:
-      VARIANT: ubuntu-amd64
-      VERSION: 5.1
+      VARIANT: nvidia2004-amd64
+      VERSION: 6.0
+      ARCH: linux/amd64

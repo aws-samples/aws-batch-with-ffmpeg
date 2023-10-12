@@ -1,4 +1,8 @@
-version v0.0.3:
+version v0.0.5:
+- Upgrade FFmpeg to 6.0 (snapshots)
+- Upgrade all FFmpeg libraries including decoders and encoders
+
+version v0.0.4:
 - Optimize code linting
 - Fix security issues
 - Refactor list of AWS EC2 Instance families per Region without boto3 (doc/architecture/0003-rollback-automatic-list-of-instance-types-per-aws-region.md)
@@ -6,6 +10,11 @@ version v0.0.3:
 - Add new compute instance family: VT1 with the support of AMD-Xilinx Video SDK 3.0 (https://aws.amazon.com/about-aws/whats-new/2023/08/amazon-ec2-vt1-improved-control-stream-quality-latency-bandwidth/)
 - Upgrade Python Lambda Runtime and add runtime management to AUTO
 - Upgrade Python Container Runtime
+
+version v0.0.3:
+- Update FFMPEG 5.1
+- Update Nvidia Cuda
+- Fix issue on AWS Athena View
 
 version v0.0.2:
 - Add FFmpeg Quality Metrics to AWS Glue Crawler

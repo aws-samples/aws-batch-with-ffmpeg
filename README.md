@@ -1,6 +1,6 @@
 # Create a managed FFmpeg workflow for your media jobs using AWS Batch
 
-_Blog post : <https://aws.amazon.com/blogs/opensource/create-a-managed-ffmpeg-workflow-for-your-media-jobs-using-aws-batch/>_
+_Blog post : <https://aws.amazon.com/blogs/opensource/create-a-managed-FFmpeg-workflow-for-your-media-jobs-using-aws-batch/>_
 
 FFmpeg is an industry standard, open source, widely used utility for handling video. FFmpeg has many capabilities, including encoding and decoding all video compression formats, encoding and decoding audio, encapsulating, and extracting audio, and video from transport streams, and many more.
 
@@ -96,8 +96,19 @@ So, parameters of the solution are
 - `ìnput_url`: AWS S3 url synced to the local storage and tranformed to local path by the solution.
 - `output_file_options`: FFmpeg output file options described in the official documentation.
 - `output_url`: AWS S3 url synced from the local storage to AWS S3 storage.
-- `compute`: Instances family used to compute the media asset : `intel`, `arm`, `amd`, `nvidia`, `fargate`
+- `compute`: Instances family used to compute the media asset : `intel`, `arm`, `amd`, `nvidia`, `fargate`, `xilinx`
 - `name`: metadata of this job for observability.
+
+The solution has different FFmpeg versions per AWS EC2 instance families.
+
+| **Compute** | **FFmpeg version per default** | **FFmpeg version(s) available** |
+|-------------|--------------------------------|---------------------------------|
+| intel       | 6.0 (snapshot)                 | 6.0, 5.1                        |
+| arm         | 6.0 (snapshot)                 | 6.0, 5.1                        |
+| amd         | 6.0 (snapshot)                 | 6.0, 5.1                        |
+| nvidia      | 6.0 (snapshot)                 | 6.0, 5.1                        |
+| fargate     | 6.0 (snapshot)                 | 6.0, 5.1                        |
+| xilinx      | 4.4                            | 4.4                             |
 
 In this example we use the AWS SDK "Boto3" (Python) and I want to cut a specific part of a video. First of all, I uploaded a video in the Amazon S3 bucket created by the solution, and complete the parameters below :
 
