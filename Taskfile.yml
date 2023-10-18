@@ -61,7 +61,7 @@ tasks:
       S3_BUCKET:
         sh: aws cloudformation describe-stacks --stack-name batch-ffmpeg-stack --query 'Stacks[0].Outputs[?OutputKey==`S3bucket`].OutputValue' --output text || true
       IMAGE_REPO_NAME:
-        sh: aws cloudformation describe-stacks --stack-name batch-ffmpeg-stack --query 'Stacks[0].Outputs[?OutputKey==`EcrRegistry`].OutputValue' --output text || true
+        sh: aws cloudformation describe-stacks --stack-name batch-ffmpeg-registry-stack --query 'Stacks[0].Outputs[?OutputKey==`EcrRegistry`].OutputValue' --output text || true
       API_URL:
         sh: aws cloudformation describe-stacks --stack-name batch-ffmpeg-api-stack --query 'Stacks[0].Outputs[?OutputKey==`ffmpegbatchapi`].OutputValue' --output text || true
       AWS_ACCOUNT_ID:
