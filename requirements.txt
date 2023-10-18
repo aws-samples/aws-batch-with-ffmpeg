@@ -2,3 +2,5 @@ aws-cdk-lib == 2.96.2
 aws-cdk.aws-servicecatalogappregistry-alpha
 aws-cdk.aws_glue_alpha
 boto3
+cdk-nag
+from-root
