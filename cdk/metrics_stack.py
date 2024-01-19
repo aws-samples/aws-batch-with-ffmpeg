@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 import os
 
+import aws_cdk as cdk
 from aws_cdk import Duration, Stack
 from aws_cdk import aws_events as events
 from aws_cdk import aws_events_targets as targets
@@ -44,6 +45,13 @@ class MetricsStack(Stack):
             runtime=faas.Runtime.PYTHON_3_11,
             runtime_management_mode=faas.RuntimeManagementMode.AUTO,
             environment=dict(S3_BUCKET=s3_bucket.bucket_name),
+        )
+        cdk.CfnOutput(
+            self,
+            "batch-ffmpeg-lambda-metrics-arn",
+            export_name="batch-ffmpeg-lambda-metrics-arn",
+            value=handler.function_arn,
+            description="AWS Batch with FFmpeg : Lambda Metrics ARN",
         )
 
         s3_bucket.grant_write(handler)

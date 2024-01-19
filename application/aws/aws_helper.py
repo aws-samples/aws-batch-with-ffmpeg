@@ -1,19 +1,29 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0
+import logging
 import os
 
 import boto3
 from botocore.exceptions import ClientError
 from ec2_metadata import ec2_metadata
 
+LOGLEVEL = os.environ.get("LOGLEVEL", "INFO").upper()
+logging.basicConfig(level=LOGLEVEL)
+logging.getLogger("aws_xray_sdk").setLevel(LOGLEVEL)
+
 
 def s3_key_exist(client, bucket, key):
-    """Return True if exist, else None."""
+    """Return True if exist, else False."""
     try:
         client.head_object(Bucket=bucket, Key=key)
-    except ClientError as exc:
-        if exc.response["Error"]["Code"] != "404":
-            return False
+    except ClientError as e:
+        logging.info(
+            "Object (%s %s) does not exist on S3 - error code: %s",
+            bucket,
+            key,
+            e.response["Error"]["Code"],
+        )
+        return False
     return True
 
 

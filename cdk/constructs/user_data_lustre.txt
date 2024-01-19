@@ -1,0 +1,13 @@
+#!/bin/bash -ex
+
+echo "AWS Batch for FFMPEG : Mount FSx Lustre Cluster"
+
+fsx_dnsname=%DNS_NAME%
+fsx_mountname=%MOUNT_NAME%
+fsx_mountpoint=%MOUNT_POINT%
+
+amazon-linux-extras install -y lustre
+mkdir -p "$fsx_mountpoint"
+mount -t lustre -o relatime,flock ${fsx_dnsname}@tcp:/${fsx_mountname} ${fsx_mountpoint}
+
+echo "AWS Batch for FFMPEG : Mount FSx Lustre Cluster : END"

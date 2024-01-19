@@ -1,10 +1,10 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0
+import errno
 import json
 import logging
 import os
 import shlex
-import shutil
 import subprocess  # nosec B404
 import sys
 import tempfile
@@ -19,6 +19,8 @@ from botocore.exceptions import ClientError
 from ffmpeg_quality_metrics import FfmpegQualityMetrics as ffqm
 
 xray_recorder.configure(sampling=False)
+xray_recorder.configure(plugins=["EC2Plugin", "ECSPlugin"])
+xray_recorder.configure(context_missing="LOG_ERROR")
 
 LOGLEVEL = os.environ.get("LOGLEVEL", "INFO").upper()
 logging.basicConfig(level=LOGLEVEL)
@@ -69,12 +71,14 @@ def main(
     aws_batch_jq_name = os.getenv("AWS_BATCH_JQ_NAME", "local")
     aws_batch_ce_name = os.getenv("AWS_BATCH_CE_NAME", "local")
     s3_bucket_stack = os.getenv("S3_BUCKET", None)
+    fsx_lustre_mount_point = os.getenv("FSX_MOUNT_POINT", None)
     logging.info(
         "AWS Batch JobId = %s - AWS Batch Job Queue Name = %s - AWS Batch Compute Env. = %s",
         aws_batch_job_id,
         aws_batch_jq_name,
         aws_batch_ce_name,
     )
+    logging.info("Fsx Lustre enabled : %s", fsx_lustre_mount_point is not None)
 
     # Get AWS parameters
     try:
@@ -87,14 +91,12 @@ def main(
         logging.error("metrics flag not found in SSM Parameter")
         metrics_flag = "FALSE"
 
-    # AWS X Ray Recorder configuration
-    xray_recorder.configure(plugins=["EC2Plugin", "ECSPlugin"])
-
+    # Prepare X-Ray traces
     segment = xray_recorder.begin_segment("batch-ffmpeg-job")
     segment.put_metadata(
         "execution", "ffmpeg-wrapper-" + time.strftime("%Y%m%d-%H%M%S")
     )
-    segment.put_annotation("application", "ffmpeg-wrapper")
+    segment.put_annotation("application", "batch-ffmpeg")
     segment.put_annotation("global_options", global_options)
     segment.put_annotation("input_file_options", input_file_options)
     segment.put_annotation("input_url", input_url)
@@ -105,24 +107,13 @@ def main(
     segment.put_annotation("AWS_BATCH_JQ_NAME", aws_batch_jq_name)
     segment.put_annotation("AWS_BATCH_CE_NAME", aws_batch_ce_name)
 
-    # Prepare temp files
-    with tempfile.TemporaryDirectory(prefix="ffmpeg_workdir_") as tmpdirname:
-        tmp_dir = tmpdirname + "/"
-    logging.info("tmp dir is %s", tmp_dir)
-    parse_output_url = S3Url(output_url)
-    bucket_output = parse_output_url.bucket
-    key_output = parse_output_url.key
-    tmp_output = tmp_dir + key_output
-    tmp_dir_output = os.path.dirname(tmp_output) + "/"
-    os.makedirs(tmp_dir_output, exist_ok=True)
-
-    # Download media assets from S3 bucket
-    try:
-        input_urls = input_url.replace(" ", "").split(",")
-        files = download_s3_files(s3_client, input_urls, tmp_dir)
-    except Exception as e:
-        logging.error("Download Error : %s", str(e))
-        sys.exit(1)
+    # Prepare media asset inputs from storage
+    input_files_path, output_file_path = prepare_assets(
+        input_url=input_url,
+        output_url=output_url,
+        s3_client=s3_client,
+        fsx_lustre_mount_point=fsx_lustre_mount_point,
+    )
 
     # ffmpeg command creation
     command_list = ["ffmpeg"]
@@ -131,13 +122,13 @@ def main(
     if input_url:
         if input_file_options:
             command_list = command_list + shlex.split(input_file_options)
-        for file in files:
+        for file in input_files_path:
             command_list.append("-i")
             command_list.append(file)
     if output_url:
         if output_file_options:
             command_list = command_list + shlex.split(output_file_options)
-        command_list.append(tmp_output)
+        command_list.append(output_file_path)
 
     # ffmpeg execution
     logging.info("ffmpeg command to launch : %s", " ".join(command_list))
@@ -162,45 +153,54 @@ def main(
     logging.info("ffmpeg succeeded %d %s %s", p.returncode, p.stdout, p.stderr)
     xray_recorder.end_subsegment()
 
-    # Uploading media output to Amazon S3
-    try:
-        if "%" in key_output:
-            # Sync output directory
-            tmp_output = tmp_dir_output
-            split = key_output.split("/")
-            key_output = "/".join(split[:-1])
-            sync_dir_to_s3(s3_client, tmp_output, bucket_output, key_output)
-        else:
-            # Upload a file
-            upload_file_to_s3(s3_client, tmp_output, bucket_output, key_output)
-    except Exception as e:
-        logging.error(
-            "The app can not upload %s on this S3 bucket (%s - %s)",
-            tmp_dir_output,
-            bucket_output,
-            key_output,
-        )
-        logging.error("Upload Error : %s", str(e))
-        sys.exit(1)
+    if not fsx_lustre_mount_point:
+        # Uploading media output to Amazon S3
+        s3_output_url = S3Url(output_url)
+        try:
+            if "%" in s3_output_url.key:
+                # Sync output directory
+                split = s3_output_url.key.split("/")
+                key_output = "/".join(split[:-1])
+                sync_dir_to_s3(
+                    s3_client,
+                    os.path.dirname(output_file_path) + "/",
+                    s3_output_url.bucket,
+                    key_output,
+                )
+            else:
+                # Upload a file
+                upload_file_to_s3(
+                    s3_client, output_file_path, s3_output_url.bucket, s3_output_url.key
+                )
+        except Exception as e:
+            logging.error(
+                "The app can not upload %s on this S3 bucket (%s - %s)",
+                os.path.dirname(output_file_path) + "/",
+                s3_output_url.bucket,
+                s3_output_url.key,
+            )
+            logging.error("Upload Error : %s", str(e))
+            sys.exit(1)
 
-    logging.info(
-        "Done : ffmpeg results uploaded to %s - key_output : %s",
-        bucket_output,
-        key_output,
-    )
+        logging.info(
+            "Done : ffmpeg results uploaded to %s - key_output : %s",
+            s3_output_url.bucket,
+            s3_output_url.key,
+        )
 
     # Calculate video quality metrics
     try:
         banned_formats = ["%", ".m4a", ".mp3"]
         if metrics_flag == "TRUE" and (
-            len(files) == 1 and (not any(x in output_url for x in banned_formats))
+            len(input_files_path) == 1
+            and (not any(x in output_url for x in banned_formats))
         ):
             logging.info(
                 "Compute video quality metrics - source : %s - destination : %s",
-                files[0],
-                tmp_output,
+                input_files_path[0],
+                output_file_path,
             )
-            metrics = quality_metrics(files[0], tmp_output)
+            metrics = quality_metrics(input_files_path[0], output_file_path)
             metrics["AWS_BATCH_JOB_ID"] = aws_batch_job_id
             metrics["AWS_BATCH_JQ_NAME"] = aws_batch_jq_name
             metrics["AWS_BATCH_CE_NAME"] = aws_batch_ce_name
@@ -208,15 +208,52 @@ def main(
             save_qm_s3(s3_client, s3_bucket_stack, metrics)
         else:
             logging.warning(
-                "You can't compute quality metrics with this command %s", name
+                "You can't compute quality metrics with this command %s and flag %s",
+                name,
+                metrics_flag,
             )
     except Exception as e:
         logging.error("Quality Metrics Error : %s", str(e))
 
     # Clean
-    shutil.rmtree(tmp_dir, ignore_errors=True)
     xray_recorder.end_segment()
     sys.exit(0)
+
+
+def prepare_assets(
+    input_url: str, output_url: str, fsx_lustre_mount_point: str, s3_client
+):
+    """Prepare media assets inputs from storage."""
+    s3_output_url = S3Url(output_url)
+    s3_inputs = input_url.replace(" ", "").split(",")
+
+    input_files_path = []
+    if not fsx_lustre_mount_point:
+        # prepare tmp directory
+        with tempfile.TemporaryDirectory(prefix="ffmpeg_workdir_") as tmpdirname:
+            tmp_dir = tmpdirname + "/"
+
+        output_file_path = tmp_dir + s3_output_url.key
+        # Download media assets from S3 bucket
+        try:
+            input_files_path = download_s3_files(s3_client, s3_inputs, tmp_dir)
+        except Exception as e:
+            logging.error("Download Error : %s", str(e))
+            sys.exit(1)
+    else:
+        output_file_path = fsx_lustre_mount_point + "/" + s3_output_url.key
+        for s3_input in s3_inputs:
+            s3_input_url = S3Url(s3_input)
+            input_file_path = fsx_lustre_mount_point + "/" + s3_input_url.key
+            if not os.path.isfile(input_file_path):
+                logging.error("File %s not found on Lustre", input_file_path)
+                raise FileNotFoundError(
+                    errno.ENOENT, os.strerror(errno.ENOENT), input_file_path
+                )
+            input_files_path.append(input_file_path)
+
+    os.makedirs(os.path.dirname(output_file_path), exist_ok=True)
+    return input_files_path, output_file_path
 
 
 @xray_recorder.capture("quality-metrics")

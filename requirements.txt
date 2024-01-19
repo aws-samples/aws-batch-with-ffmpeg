@@ -3,4 +3,5 @@ aws-cdk.aws-servicecatalogappregistry-alpha
 aws-cdk.aws_glue_alpha
 boto3
 cdk-nag
+cdklabs.cdk-ssm-documents
 from-root

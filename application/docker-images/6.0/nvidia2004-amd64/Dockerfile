@@ -9,7 +9,8 @@
 # Guillaume Marchand - AWS - gmarchan@amazon.fr
 #
 
-FROM        nvidia/cuda:12.2.0-devel-ubuntu20.04 AS base
+# Development
+FROM        nvidia/cuda:12.3.1-devel-ubuntu20.04 AS devel-base
 
 ENV	    NVIDIA_DRIVER_CAPABILITIES compute,utility,video
 ENV	    DEBIAN_FRONTEND=noninteractive
@@ -33,7 +34,33 @@ RUN add-apt-repository ppa:deadsnakes/ppa -y \
     && update-alternatives --install /usr/bin/python python /usr/bin/python${PYTHON_VERSION} 1 \
     && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1
 
-FROM base as build
+# Runtime
+FROM        nvidia/cuda:12.3.1-runtime-ubuntu20.04 AS runtime-base
+
+ENV	    NVIDIA_DRIVER_CAPABILITIES compute,utility,video
+ENV	    DEBIAN_FRONTEND=noninteractive
+WORKDIR     /tmp/workdir
+
+RUN     apt-get -yqq update && \
+        apt-get -yqq upgrade && \
+        apt-get install -yqq --no-install-recommends ca-certificates expat libgomp1 software-properties-common libxcb-shape0-dev && \
+        apt-get autoremove -y && \
+        apt-get clean -y && \
+        rm -rf /var/lib/apt/lists/*
+
+# Install Python 3
+ARG PYTHON_VERSION=3.11
+RUN add-apt-repository ppa:deadsnakes/ppa -y \
+    && apt-get install -yqq --fix-missing --no-install-recommends curl python${PYTHON_VERSION} python${PYTHON_VERSION}-dev python${PYTHON_VERSION}-distutils python${PYTHON_VERSION}-venv python-is-python3 \
+    && apt-get clean -y \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -sS https://bootstrap.pypa.io/get-pip.py | python${PYTHON_VERSION} \
+    && python${PYTHON_VERSION} -m pip install --quiet --no-cache-dir --upgrade pip \
+    && update-alternatives --install /usr/bin/python python /usr/bin/python${PYTHON_VERSION} 1 \
+    && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1
+
+# Build
+FROM devel-base as build
 
 ENV     FFMPEG_VERSION=snapshot \
         NVIDIA_HEADERS_VERSION=12.1.14.0 \
@@ -442,7 +469,7 @@ RUN \
         sed "s:${PREFIX}:/usr/local:g; s:/lib64:/lib:g" <"$pc" >/usr/local/lib/pkgconfig/"${pc##*/}"; \
         done
 
-FROM        base AS release
+FROM        runtime-base AS release
 
 ENV         LD_LIBRARY_PATH=/usr/local/lib:/usr/local/lib64
 

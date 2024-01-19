@@ -1,9 +1,11 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: Apache-2.0,
 from aws_cdk import Duration
 from aws_cdk import aws_batch as batch
 from aws_cdk import aws_ec2 as ec2
+from aws_cdk import aws_fsx as fsx
 from constructs import Construct
+from from_root import from_root
 
 
 class VideoBatchJob(Construct):
@@ -25,9 +27,9 @@ class VideoBatchJob(Construct):
         ec2_ami: ec2.IMachineImage,
         ec2_vpc_sg,
         ec2_vpc_subnets,
-        batch_launch_template=None,
         batch_compute_instance_classes=None,
         batch_compute_instance_types=None,
+        lustre_fs: fsx.LustreFileSystem = None,
     ) -> None:
         super().__init__(scope, construct_id)
 
@@ -47,9 +49,54 @@ class VideoBatchJob(Construct):
             timeout=Duration.hours(10),
         )
 
-        # Compute Environment
-
         if fargate_disabled:
+            # Multipart User Data
+            multipart_user_data = ec2.MultipartUserData()
+            with open(from_root("cdk", "constructs", "user_data_xray.txt")) as f:
+                user_data_xray_txt = f.read()
+                multipart_user_data.add_part(
+                    ec2.MultipartBody.from_raw_body(
+                        content_type='text/x-shellscript; charset="us-ascii"',
+                        body=user_data_xray_txt,
+                    )
+                )
+            if lustre_fs:
+                # BUG issue with GPU AMI https://github.com/aws/amazon-ecs-ami/pull/191
+                if proc_name in ["xilinx", "nvidia"]:
+                    with open(from_root("cdk", "constructs", "user_data_gpu.txt")) as f:
+                        user_data_gpu_txt = f.read()
+                        multipart_user_data.add_part(
+                            ec2.MultipartBody.from_raw_body(
+                                content_type='text/x-shellscript; charset="us-ascii"',
+                                body=user_data_gpu_txt,
+                            )
+                        )
+                with open(from_root("cdk", "constructs", "user_data_lustre.txt")) as f:
+                    user_data_lustre_txt = f.read()
+                    user_data_lustre_txt = user_data_lustre_txt.replace(
+                        "%DNS_NAME%", lustre_fs.dns_name
+                    )
+                    user_data_lustre_txt = user_data_lustre_txt.replace(
+                        "%MOUNT_NAME%", lustre_fs.mount_name
+                    )
+                    user_data_lustre_txt = user_data_lustre_txt.replace(
+                        "%MOUNT_POINT%", "/fsx-lustre"
+                    )
+
+                    multipart_user_data.add_part(
+                        ec2.MultipartBody.from_raw_body(
+                            content_type='text/x-shellscript; charset="us-ascii"',
+                            body=user_data_lustre_txt,
+                        )
+                    )
+
+            # Launch Template
+            launch_template = ec2.LaunchTemplate(
+                self,
+                "lt-" + proc_name,
+                launch_template_name="batch-ffmpeg-lt-" + proc_name,
+                user_data=multipart_user_data,
+            )
             compute_environment = batch.ManagedEc2EcsComputeEnvironment(
                 self,
                 "batch-ec2-compute-environment-" + proc_name,
@@ -63,12 +110,12 @@ class VideoBatchJob(Construct):
                 update_to_latest_image_version=True,
                 instance_role=batch_compute_env_instance_role,
                 terminate_on_update=False,
-                # @TODO Comment to debug
-                launch_template=batch_launch_template,
+                launch_template=launch_template,
                 security_groups=[ec2_vpc_sg],
                 vpc_subnets=ec2_vpc_subnets,
                 spot=True,
                 spot_bid_percentage=100,
+                maxv_cpus=4096,
             )
         else:
             compute_environment = batch.FargateComputeEnvironment(

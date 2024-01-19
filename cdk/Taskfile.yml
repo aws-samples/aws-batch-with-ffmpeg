@@ -28,17 +28,17 @@ tasks:
     desc: Synth cdk stack
     deps: [build-lambda]
     cmds:
-      - cdk synth batch-ffmpeg-stack batch-ffmpeg-api-stack batch-ffmpeg-registry-stack batch-ffmpeg-metrics-stack
+      - cdk synth --context batch-ffmpeg:lustre-fs:enable=true
 
   deploy:
     desc: deploy all available stacks
     deps: [build-lambda]
     cmds:
-      - cdk bootstrap
-      - cdk deploy --all --require-approval never
+      #- cdk bootstrap
+      - cdk deploy --all --require-approval never --context batch-ffmpeg:lustre-fs:enable=true
 
   destroy-regions:
-    deps: [build-lambda]
+    #deps: [build-lambda]
     cmds:
       - export AWS_DEFAULT_REGION=ap-southeast-2 && python3 cdk/src/appregistry_delete.py && cdk destroy --all --force && (aws ecr delete-repository --repository-name batch-ffmpeg --force || true)
       - export AWS_DEFAULT_REGION=ap-south-1 && python3 cdk/src/appregistry_delete.py && cdk destroy --all --force && (aws ecr delete-repository --repository-name batch-ffmpeg --force || true)

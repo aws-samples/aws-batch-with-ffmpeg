@@ -107,7 +107,7 @@ def export_handler(event, context):
         EndTime=today,
         TimeRangeType="Event",
         Sampling=False,
-        FilterExpression='annotation.application="ffmpeg-wrapper"',
+        FilterExpression='annotation.application="batch-ffmpeg"',
     )
 
     # Collect Trace Ids

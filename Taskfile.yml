@@ -1,55 +1,30 @@
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: Apache-2.0
-
-version: "3"
-
-dotenv: [".env", "{{.ENV}}/.env.", "{{.HOME}}/.env"]
-
-vars:
-  IMAGE_REPO_NAME: batch-ffmpeg
-
+dotenv:
+  - .env
+  - "{{.ENV}}/.env."
+  - "{{.HOME}}/.env"
 includes:
   app:
-    taskfile: ./application
     dir: ./application
-  test:
-    taskfile: ./tests
-    dir: ./
-    optional: true
+    taskfile: ./application
   cdk:
-    taskfile: ./cdk
     dir: ./
+    taskfile: ./cdk
   dist:
-    taskfile: ./deployment
     dir: ./
     optional: true
-
+    taskfile: ./deployment
+  doc:
+    dir: ./doc
+    optional: true
+    taskfile: ./doc
+  test:
+    dir: ./
+    optional: true
+    taskfile: ./tests
 tasks:
-  venv:
-    desc: Create local python virtual env
-    cmds:
-      - rm -rf .venv/ || true
-      - python3 -m venv .venv
-      - .venv/bin/python3 -m pip install --upgrade --quiet pip
-      - .venv/bin/pip install --quiet -r requirements.txt
-      - .venv/bin/pip install --quiet -r application/requirements.txt
-      - .venv/bin/pip install --quiet -r tests/requirements.txt
-    sources:
-      - requirements.txt
-    generates:
-      - .venv/bin/activate
-
-  venv:upgrade:
-    desc: upgrade python packages in python virtual env
-    cmds:
-      - .venv/bin/python3 -m pip install --upgrade --quiet pip
-      - .venv/bin/pip install --upgrade --quiet -r requirements.txt
-      - .venv/bin/pip install --upgrade --quiet -r application/requirements.txt
-      - .venv/bin/pip install --upgrade --quiet -r tests/requirements.txt
-      - .venv/bin/pip list
-
   env:
-    desc: env. variables for scripts
     cmds:
       - rm -f .env || true
       - echo 'S3_BUCKET={{.S3_BUCKET}}' >> .env
@@ -57,16 +32,62 @@ tasks:
       - echo 'AWS_DEFAULT_REGION={{.AWS_DEFAULT_REGION}}' >> .env
       - echo 'AWS_ACCOUNT_ID={{.AWS_ACCOUNT_ID}}' >> .env
       - echo 'API_URL={{.API_URL}}' >> .env
+      - echo 'API_ID={{.API_ID}}' >> .env
+      - echo 'LAMBDA_METRICS_ARN={{.LAMBDA_METRICS_ARN}}' >> .env
+    desc: env. variables for scripts
+    status:
+      - test -f .env
     vars:
-      S3_BUCKET:
-        sh: aws cloudformation describe-stacks --stack-name batch-ffmpeg-stack --query 'Stacks[0].Outputs[?OutputKey==`S3bucket`].OutputValue' --output text || true
-      IMAGE_REPO_NAME:
-        sh: aws cloudformation describe-stacks --stack-name batch-ffmpeg-registry-stack --query 'Stacks[0].Outputs[?OutputKey==`EcrRegistry`].OutputValue' --output text || true
+      API_ID:
+        sh:
+          aws cloudformation describe-stacks --stack-name batch-ffmpeg-api-stack
+          --query 'Stacks[0].Outputs[?ExportName==`ffmpeg-batch-api-id`].OutputValue'
+          --output text || true
+      LAMBDA_METRICS_ARN:
+        sh:
+          aws cloudformation describe-stacks --stack-name batch-ffmpeg-metrics-stack
+          --query 'Stacks[0].Outputs[?ExportName==`batch-ffmpeg-lambda-metrics-arn`].OutputValue'
+          --output text || true
       API_URL:
-        sh: aws cloudformation describe-stacks --stack-name batch-ffmpeg-api-stack --query 'Stacks[0].Outputs[?OutputKey==`ffmpegbatchapi`].OutputValue' --output text || true
+        sh:
+          aws cloudformation describe-stacks --stack-name batch-ffmpeg-api-stack
+          --query 'Stacks[0].Outputs[?ExportName==`ffmpeg-batch-api`].OutputValue'
+          --output text || true
       AWS_ACCOUNT_ID:
         sh: aws sts get-caller-identity --query "Account" --output text || true
       AWS_DEFAULT_REGION:
         sh: aws configure get region || true
-    status:
-      - test -f .env
+      IMAGE_REPO_NAME:
+        sh:
+          aws cloudformation describe-stacks --stack-name batch-ffmpeg-storage-stack
+          --query 'Stacks[0].Outputs[?OutputKey==`EcrRegistry`].OutputValue' --output
+          text || true
+      S3_BUCKET:
+        sh:
+          aws cloudformation describe-stacks --stack-name batch-ffmpeg-storage-stack
+          --query 'Stacks[0].Outputs[?OutputKey==`S3bucket`].OutputValue' --output
+          text || true
+  venv:
+    cmds:
+      - rm -rf .venv/ || true
+      - python3 -m venv .venv
+      - .venv/bin/python3 -m pip install --upgrade --quiet pip
+      - .venv/bin/pip install --quiet -r requirements.txt
+      - .venv/bin/pip install --quiet -r application/requirements.txt
+      - .venv/bin/pip install --quiet -r tests/requirements.txt
+    desc: Create local python virtual env
+    generates:
+      - .venv/bin/activate
+    sources:
+      - requirements.txt
+  venv:upgrade:
+    cmds:
+      - .venv/bin/python3 -m pip install --upgrade --quiet pip
+      - .venv/bin/pip install --upgrade --quiet -r requirements.txt
+      - .venv/bin/pip install --upgrade --quiet -r application/requirements.txt
+      - .venv/bin/pip install --upgrade --quiet -r tests/requirements.txt
+      - .venv/bin/pip list
+    desc: upgrade python packages in python virtual env
+vars:
+  IMAGE_REPO_NAME: batch-ffmpeg
+version: "3"
