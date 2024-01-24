@@ -26,10 +26,16 @@ class LandingZoneStack(Stack):
                 )
             ],
         )
-        subnet_selection = ec2.SubnetSelection(
+        subnet_vpc_endpoint_interface = self.vpc.select_subnets(
             subnet_type=ec2.SubnetType.PRIVATE_ISOLATED
-        )
+        ).subnets[0]
 
+        subnet_selection_interface = ec2.SubnetSelection(
+            subnets=[subnet_vpc_endpoint_interface]
+        )
+        subnet_selection_gateway = ec2.SubnetSelection(
+            subnet_type=ec2.SubnetType.PRIVATE_ISOLATED,
+        )
         # VPC Flow Logs
         log_group = logs.LogGroup(self, "flow-logs-group")
         flow_log_role = iam.Role(
@@ -50,65 +56,65 @@ class LandingZoneStack(Stack):
         self.vpc.add_gateway_endpoint(
             "vpce-s3",
             service=ec2.GatewayVpcEndpointAwsService.S3,
-            subnets=[subnet_selection],
+            subnets=[subnet_selection_gateway],
         )
         self.vpc.add_interface_endpoint(
             "vpce-ecr",
             service=ec2.InterfaceVpcEndpointAwsService.ECR,
-            subnets=subnet_selection,
+            subnets=subnet_selection_interface,
         )
         self.vpc.add_interface_endpoint(
             "vpce-ecr-docker",
             service=ec2.InterfaceVpcEndpointAwsService.ECR_DOCKER,
-            subnets=subnet_selection,
+            subnets=subnet_selection_interface,
         )
         self.vpc.add_interface_endpoint(
             "vpce-cloudwatch-logs",
             service=ec2.InterfaceVpcEndpointAwsService.CLOUDWATCH_LOGS,
-            subnets=subnet_selection,
+            subnets=subnet_selection_interface,
         )
         self.vpc.add_interface_endpoint(
             "vpce-cloudwatch",
             service=ec2.InterfaceVpcEndpointAwsService.CLOUDWATCH,
-            subnets=subnet_selection,
+            subnets=subnet_selection_interface,
         )
         self.vpc.add_interface_endpoint(
             "vpce-ecs",
             service=ec2.InterfaceVpcEndpointAwsService.ECS,
-            subnets=subnet_selection,
+            subnets=subnet_selection_interface,
         )
         self.vpc.add_interface_endpoint(
             "vpce-ecs-agent",
             service=ec2.InterfaceVpcEndpointAwsService.ECS_AGENT,
-            subnets=subnet_selection,
+            subnets=subnet_selection_interface,
         )
         self.vpc.add_interface_endpoint(
             "vpce-ecs-telemetry",
             service=ec2.InterfaceVpcEndpointAwsService.ECS_TELEMETRY,
-            subnets=subnet_selection,
+            subnets=subnet_selection_interface,
         )
         self.vpc.add_interface_endpoint(
             "vpce-xray",
             service=ec2.InterfaceVpcEndpointAwsService.XRAY,
-            subnets=subnet_selection,
+            subnets=subnet_selection_interface,
         )
         self.vpc.add_interface_endpoint(
             "vpce-ssm",
             service=ec2.InterfaceVpcEndpointAwsService.SSM,
-            subnets=subnet_selection,
+            subnets=subnet_selection_interface,
         )
         self.vpc.add_interface_endpoint(
             "vpce-ssm-messages",
             service=ec2.InterfaceVpcEndpointAwsService.SSM_MESSAGES,
-            subnets=subnet_selection,
+            subnets=subnet_selection_interface,
         )
         self.vpc.add_interface_endpoint(
             "vpce-ec2-messages",
             service=ec2.InterfaceVpcEndpointAwsService.EC2_MESSAGES,
-            subnets=subnet_selection,
+            subnets=subnet_selection_interface,
         )
         self.vpc.add_interface_endpoint(
             "vpce-ec2",
             service=ec2.InterfaceVpcEndpointAwsService.EC2,
-            subnets=subnet_selection,
+            subnets=subnet_selection_interface,
         )

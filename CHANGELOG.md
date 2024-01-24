@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## version v0.0.7
+
+### Changed
+
+- Deploy Interface VPC Endpoint in one AZ to optimize cost [(#17)](https://github.com/aws-samples/aws-batch-with-ffmpeg/issues/17)
+- Fix pyyaml dependency
+
 ## version v0.0.6
 
 ### Added
