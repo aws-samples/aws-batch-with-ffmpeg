@@ -12,7 +12,6 @@ from cdk.api_stack import ApiStack
 from cdk.batch_stack import BatchStack
 from cdk.landing_zone_stack import LandingZoneStack
 from cdk.metrics_stack import MetricsStack
-from cdk.registry_stack import RegistryStack
 from cdk.sfn_stack import SfnStack
 from cdk.storage_stack import StorageStack
 
@@ -26,8 +25,6 @@ env = cdk.Environment(
 
 app = cdk.App()
 cdk.Tags.of(app).add("application", "batch-ffmpeg")
-
-registry_stack = RegistryStack(app, "batch-ffmpeg-registry-stack", env=env)
 
 landing_zone_stack = LandingZoneStack(
     app, "batch-ffmpeg-landing-stack", env=env, description="AWS Batch with FFmpeg"
