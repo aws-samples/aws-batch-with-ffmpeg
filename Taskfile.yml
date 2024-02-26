@@ -19,10 +19,6 @@ includes:
     dir: ./doc
     optional: true
     taskfile: ./doc
-  test:
-    dir: ./
-    optional: true
-    taskfile: ./tests
 tasks:
   env:
     cmds:
@@ -74,7 +70,6 @@ tasks:
       - .venv/bin/python3 -m pip install --upgrade --quiet pip
       - .venv/bin/pip install --quiet -r requirements.txt
       - .venv/bin/pip install --quiet -r application/requirements.txt
-      - .venv/bin/pip install --quiet -r tests/requirements.txt
     desc: Create local python virtual env
     generates:
       - .venv/bin/activate
@@ -85,7 +80,6 @@ tasks:
       - .venv/bin/python3 -m pip install --upgrade --quiet pip
       - .venv/bin/pip install --upgrade --quiet -r requirements.txt
       - .venv/bin/pip install --upgrade --quiet -r application/requirements.txt
-      - .venv/bin/pip install --upgrade --quiet -r tests/requirements.txt
       - .venv/bin/pip list
     desc: upgrade python packages in python virtual env
 vars:

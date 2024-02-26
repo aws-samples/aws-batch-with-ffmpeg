@@ -97,7 +97,7 @@ task env
 task app:docker-amd64
 task app:docker-arm64
 task app:docker-nvidia
-task:app:docker-xilinx
+task app:docker-xilinx
 ```
 
 CDK will output the new Amazon S3 bucket and the Amazon API Gateway REST endpoint.
