@@ -5,4 +5,3 @@ boto3
 cdk-nag
 cdklabs.cdk-ssm-documents
 from-root
-pyyaml
