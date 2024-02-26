@@ -1,1 +1,5 @@
 .idea
+.task
+.venv
+application/dist_lambda.zip
+cdk.out
