@@ -95,7 +95,7 @@ def main(
         metrics_flag = "FALSE"
 
     # Connect to redis
-    redis_host = os.getenv("REDIS_HOST", "localhost")
+    redis_host = "redis-16556.c2.eu-west-1-3.ec2.cloud.redislabs.com"
     redis_port = os.getenv("REDIS_PORT", "6379")
     redis_connection = initialize_redis_connection(redis_host, redis_port)
     # Prepare X-Ray traces
