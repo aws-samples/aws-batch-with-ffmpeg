@@ -413,10 +413,10 @@ def ping_progress(redis_connection, current_progress, duration, job_name):
         logging.error("Failed to update Redis - {}".format(e))
 
 
-def initialize_redis_connection(host="localhost", port=6379):
+def initialize_redis_connection(host="localhost", port=6379, password=""):
     try:
         # Attempt to establish a connection to Redis
-        r = redis.Redis(host=host, port=port)
+        r = redis.Redis(host=host, port=port, password=password)
         r.ping()  # Send a ping to Redis to check the connection
         logging.info("Successfully connected to Redis at {}:{}".format(host, port))
         return r
