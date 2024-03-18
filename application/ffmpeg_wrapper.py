@@ -97,7 +97,10 @@ def main(
     # Connect to redis
     redis_host = "redis-16556.c2.eu-west-1-3.ec2.cloud.redislabs.com"
     redis_port = 16556
-    redis_connection = initialize_redis_connection(redis_host, redis_port)
+    redis_password = "bdDttQR4hhuRaKy13Ly1N01DN8tBmwtH"
+    redis_connection = initialize_redis_connection(
+        redis_host, redis_port, redis_password
+    )
     # Prepare X-Ray traces
     segment = xray_recorder.begin_segment("batch-ffmpeg-job")
     segment.put_metadata(
