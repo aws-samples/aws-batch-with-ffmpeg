@@ -92,6 +92,27 @@ You need the following prerequisites to set up the solution :
 - Latest version of [Docker](https://docs.docker.com/get-docker/)
 - Last version of [Python 3](https://www.python.org/downloads/)
 
+## Update Docker Image
+
+1. Update code (e.g. in the ffmpeg python file)
+2. Run commands:
+
+```bash
+task venv
+source .venv/bin/activate
+task env
+task app:docker-amd64 # <- builds the new image and pushes to ECR
+```
+
+Note: `app:docker-amd64` should be changed to one of the below if we decide to use another compute environment other than amd64:
+- task app:docker-arm64
+- task app:docker-nvidia
+- task app:docker-xilinx
+
+3. Run a new batch item and verify that the new image is pulled from ECR
+
+TODO: figure out how to "QA" this so we're not testing in production.
+
 ## Deploy the solution with AWS CDK
 
 To deploy the solution on your account, complete the following steps:
