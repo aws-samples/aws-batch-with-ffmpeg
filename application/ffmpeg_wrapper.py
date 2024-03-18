@@ -9,14 +9,17 @@ import subprocess  # nosec B404
 import sys
 import tempfile
 import time
+import re
 
 import boto3
 import click
+import redis
 from aws import aws_helper
 from aws.s3_url import S3Url
 from aws_xray_sdk.core import xray_recorder
 from botocore.exceptions import ClientError
 from ffmpeg_quality_metrics import FfmpegQualityMetrics as ffqm
+from datetime import timedelta
 
 xray_recorder.configure(sampling=False)
 xray_recorder.configure(plugins=["EC2Plugin", "ECSPlugin"])
@@ -91,6 +94,13 @@ def main(
         logging.error("metrics flag not found in SSM Parameter")
         metrics_flag = "FALSE"
 
+    # Connect to redis
+    redis_host = "redis-16556.c2.eu-west-1-3.ec2.cloud.redislabs.com"
+    redis_port = 16556
+    redis_password = "bdDttQR4hhuRaKy13Ly1N01DN8tBmwtH"
+    redis_connection = initialize_redis_connection(
+        redis_host, redis_port, redis_password
+    )
     # Prepare X-Ray traces
     segment = xray_recorder.begin_segment("batch-ffmpeg-job")
     segment.put_metadata(
@@ -117,6 +127,7 @@ def main(
 
     # ffmpeg command creation
     command_list = ["ffmpeg"]
+    command_list = command_list + shlex.split("-progress pipe:1")
     if global_options:
         command_list = command_list + shlex.split(global_options)
     if input_url:
@@ -135,16 +146,27 @@ def main(
     subsegment = xray_recorder.begin_subsegment("cmd-execution")
     subsegment.put_metadata("command", " ".join(command_list))
 
-    p = subprocess.run(
+    duration_ms = None
+
+    with subprocess.Popen(
         command_list,
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
         shell=False,
         cwd=None,
-        timeout=None,
-        check=False,
         encoding=None,
-    )  # nosec B603
+    ) as p:
+        for line in p.stdout:
+            if parse_ffmpeg_log_for_duration(line) is not None:
+                duration_ms = parse_ffmpeg_log_for_duration(line)
+            if (
+                duration_ms is not None
+                and parse_ffmpeg_log_for_progress(line) is not None
+            ):
+                progress_ms = parse_ffmpeg_log_for_progress(line)
+                ping_progress(redis_connection, progress_ms, duration_ms, name)
+
     if p.returncode != 0:
         logging.error("ffmpeg failed - return code : %d", p.returncode)
         logging.error("ffmpeg failed - output : %s", p.stdout)
@@ -333,6 +355,77 @@ def sync_dir_to_s3(s3_client, source_dir, s3_bucket, s3_key):
             s3_path = os.path.join(s3_key, relative_path)
             # Upload file to S3
             upload_file_to_s3(s3_client, local_path, s3_bucket, s3_path)
+
+
+def parse_ffmpeg_log_for_duration(text):
+    # Search for duration in text using regular expressions
+    duration_match = re.search(r"Duration: (\d{2}):(\d{2}):(\d{2}).(\d{2})", text)
+
+    if not duration_match:
+        return None
+
+    # Extract time components from the match
+    hours, minutes, seconds, centiseconds = map(int, duration_match.groups())
+
+    # Create a timedelta object representing the duration
+    duration_timedelta = timedelta(
+        hours=hours, minutes=minutes, seconds=seconds, milliseconds=centiseconds * 10
+    )
+
+    # Convert the duration to milliseconds
+    duration_milliseconds = int(duration_timedelta.total_seconds() * 1000)
+
+    return duration_milliseconds
+
+
+def parse_ffmpeg_log_for_progress(text):
+    # Search for macroseconds in text using regular expressions
+    macroseconds_match = re.search(r"out_time_ms=(\d+)", text)
+
+    if not macroseconds_match:
+        return None
+
+    # Extract macroseconds from the match and convert to an integer
+    macroseconds = int(macroseconds_match.group(1))
+
+    return round(macroseconds / 1000)
+
+
+# Update progress function with error handling and connection passed as argument
+def ping_progress(redis_connection, current_progress, duration, job_name):
+    if not redis_connection:
+        logging.warn("Not saving progress as there is no redis connection.")
+        return
+
+    try:
+        # Calculate progress as a value between 0.0 and 1.0, and round to 3 significant digits
+        progress_value = round(
+            max(0.0, min(1.0, current_progress / duration)) if duration > 0 else 0.0, 3
+        )
+        progress_percentage = str(round(progress_value * 100, 1)) + "%"
+        logging.info(
+            "Current progress: %d/%d %s(%.2f)",
+            current_progress,
+            duration,
+            progress_percentage,
+            progress_value,
+        )
+        # Update the value for the key "test" with TTL of 5 minutes (300 seconds)
+        redis_connection.setex("ffmpeg_batch_progress:" + job_name, 300, progress_value)
+    except (ConnectionError, TimeoutError) as e:
+        logging.error("Failed to update Redis - {}".format(e))
+
+
+def initialize_redis_connection(host="localhost", port=6379, password=""):
+    try:
+        # Attempt to establish a connection to Redis
+        r = redis.Redis(host=host, port=port, password=password)
+        r.ping()  # Send a ping to Redis to check the connection
+        logging.info("Successfully connected to Redis at {}:{}".format(host, port))
+        return r
+    except (ConnectionError, TimeoutError) as e:
+        logging.error("Failed to connect to Redis at {}:{} - {}".format(host, port, e))
+        return None
 
 
 if __name__ == "__main__":

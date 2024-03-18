@@ -5,7 +5,7 @@ version: "3"
 
 vars:
   DOCKER_EXE: docker # Choose between docker cli or podman
-
+  S3_BUCKET: batch-ffmpeg-storage-stack-bucket43879c71-aonnotrkkypy
 tasks:
   default:
     cmds:
@@ -124,7 +124,7 @@ tasks:
 
   wrapper-test:
     cmds:
-      - python3 ffmpeg_wrapper.py --input_url s3://{{.S3_BUCKET}}/tests/media-assets/norisleepingmusic2_480p.mp4 --output_url s3://{{.S3_BUCKET}}/tests/media-assets/output/python-run.mp4 --output_file_options '-an' --name='python'
+      - ../.venv/bin/python ffmpeg_wrapper.py --input_url s3://{{.S3_BUCKET}}/test/test_input.mov --output_url s3://{{.S3_BUCKET}}/test/test_output.mp4 --output_file_options '-vcodec libx264 -pix_fmt yuv420p -profile:v baseline -level 3' --name='python_test'
 
   docker-bash:
     deps: [docker-login]

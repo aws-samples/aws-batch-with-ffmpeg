@@ -3,3 +3,4 @@
 .venv
 application/dist_lambda.zip
 cdk.out
+.env

@@ -23,6 +23,16 @@ _Blog post : <https://aws.amazon.com/blogs/opensource/create-a-managed-ffmpeg-wo
 
 <!--TOC-->
 
+## Redis Cache
+
+To keep the progress status accessible from our workers, we use Redis cache.
+This cache is deployed on redis labs cloud and can be accessible via:
+```
+username: default
+password: bdDttQR4hhuRaKy13Ly1N01DN8tBmwtH
+redis-16556.c2.eu-west-1-3.ec2.cloud.redislabs.com:16556
+```
+
 ## Introduction
 
 [FFmpeg](https://ffmpeg.org/) is an open source, industry standard utility for handling video. To use FFmpeg on AWS, customers must maintain FFmpeg themselves on EC2 and build workflow managers to ingest and process media. This solution integrates FFmpeg with AWS services to create a managed offering. It packages FFmpeg commands in containers, managed by [AWS Batch](https://aws.amazon.com/batch/). Customers can then execute FFmpeg jobs through a REST API.

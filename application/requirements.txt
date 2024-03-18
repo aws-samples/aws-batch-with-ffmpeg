@@ -5,3 +5,4 @@ click
 ec2-metadata
 ffmpeg_quality_metrics
 requests
+redis
