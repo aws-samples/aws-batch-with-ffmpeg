@@ -158,6 +158,8 @@ def main(
         encoding=None,
     ) as p:
         for line in p.stdout:
+            if should_log_line(line):
+                logging.info(line)
             if parse_ffmpeg_log_for_duration(line) is not None:
                 duration_ms = parse_ffmpeg_log_for_duration(line)
             if (
@@ -168,11 +170,12 @@ def main(
                 ping_progress(redis_connection, progress_ms, duration_ms, name)
 
     if p.returncode != 0:
-        logging.error("ffmpeg failed - return code : %d", p.returncode)
-        logging.error("ffmpeg failed - output : %s", p.stdout)
-        logging.error("ffmpeg failed - error : %s", p.stderr)
+        logging.error("ffmpeg failed - return code: %d", p.returncode)
+        logging.error("ffmpeg failed - error:")
+        for line in p.stderr:
+            logging.error(line)
         sys.exit(1)
-    logging.info("ffmpeg succeeded %d %s %s", p.returncode, p.stdout, p.stderr)
+    logging.info("ffmpeg succeeded - return code: %d", p.returncode)
     xray_recorder.end_subsegment()
 
     if not fsx_lustre_mount_point:
@@ -389,6 +392,29 @@ def parse_ffmpeg_log_for_progress(text):
     macroseconds = int(macroseconds_match.group(1))
 
     return round(macroseconds / 1000)
+
+
+def should_log_line(line):
+    # Check if the line matches any of the patterns to exclude.
+    # We don't want to log progress lines
+    patterns = [
+        r"^out_time=",
+        r"^dup_frames=",
+        r"^drop_frames=",
+        r"^speed=",
+        r"^progress=",
+        r"^frame=",
+        r"^fps=",
+        r"^stream_0_0_q=",
+        r"^bitrate=",
+        r"^total_size=",
+        r"^out_time_us=",
+        r"^out_time_ms=",
+    ]
+
+    should_be_excluded = any(re.search(pattern, line) for pattern in patterns)
+
+    return should_be_excluded == False
 
 
 # Update progress function with error handling and connection passed as argument
