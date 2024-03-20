@@ -157,61 +157,68 @@ def main(
         cwd=None,
         encoding=None,
     ) as p:
-        for line in p.stdout:
-            if should_log_line(line):
-                logging.info(line)
-            if parse_ffmpeg_log_for_duration(line) is not None:
-                duration_ms = parse_ffmpeg_log_for_duration(line)
-            if (
-                duration_ms is not None
-                and parse_ffmpeg_log_for_progress(line) is not None
-            ):
-                progress_ms = parse_ffmpeg_log_for_progress(line)
-                ping_progress(redis_connection, progress_ms, duration_ms, name)
+        if p.stdout is not None:
+            for line in p.stdout:
+                if should_log_line(line):
+                    logging.info(line)
+                if parse_ffmpeg_log_for_duration(line) is not None:
+                    duration_ms = parse_ffmpeg_log_for_duration(line)
+                if (
+                    duration_ms is not None
+                    and parse_ffmpeg_log_for_progress(line) is not None
+                ):
+                    progress_ms = parse_ffmpeg_log_for_progress(line)
+                    ping_progress(redis_connection, progress_ms, duration_ms, name)
+        else:
+            logging.error("stdout is empty")
 
     if p.returncode != 0:
         logging.error("ffmpeg failed - return code: %d", p.returncode)
         logging.error("ffmpeg failed - error:")
-        for line in p.stderr:
-            logging.error(line)
+        if p.stderr is not None:
+            for line in p.stderr:
+                logging.error(line)
+        else:
+            logging.error("stderr is empty")
         sys.exit(1)
     logging.info("ffmpeg succeeded - return code: %d", p.returncode)
     xray_recorder.end_subsegment()
 
-    if not fsx_lustre_mount_point:
-        # Uploading media output to Amazon S3
-        s3_output_url = S3Url(output_url)
-        try:
-            if "%" in s3_output_url.key:
-                # Sync output directory
-                split = s3_output_url.key.split("/")
-                key_output = "/".join(split[:-1])
-                sync_dir_to_s3(
-                    s3_client,
-                    os.path.dirname(output_file_path) + "/",
-                    s3_output_url.bucket,
-                    key_output,
-                )
-            else:
-                # Upload a file
-                upload_file_to_s3(
-                    s3_client, output_file_path, s3_output_url.bucket, s3_output_url.key
-                )
-        except Exception as e:
-            logging.error(
-                "The app can not upload %s on this S3 bucket (%s - %s)",
+    # fsx lustre does not yet sync the files correctly
+    # if not fsx_lustre_mount_point:
+    # Uploading media output to Amazon S3
+    s3_output_url = S3Url(output_url)
+    try:
+        if "%" in s3_output_url.key:
+            # Sync output directory
+            split = s3_output_url.key.split("/")
+            key_output = "/".join(split[:-1])
+            sync_dir_to_s3(
+                s3_client,
                 os.path.dirname(output_file_path) + "/",
                 s3_output_url.bucket,
-                s3_output_url.key,
+                key_output,
             )
-            logging.error("Upload Error : %s", str(e))
-            sys.exit(1)
-
-        logging.info(
-            "Done : ffmpeg results uploaded to %s - key_output : %s",
+        else:
+            # Upload a file
+            upload_file_to_s3(
+                s3_client, output_file_path, s3_output_url.bucket, s3_output_url.key
+            )
+    except Exception as e:
+        logging.error(
+            "The app can not upload %s on this S3 bucket (%s - %s)",
+            os.path.dirname(output_file_path) + "/",
             s3_output_url.bucket,
             s3_output_url.key,
         )
+        logging.error("Upload Error : %s", str(e))
+        sys.exit(1)
+
+    logging.info(
+        "Done : ffmpeg results uploaded to %s - key_output : %s",
+        s3_output_url.bucket,
+        s3_output_url.key,
+    )
 
     # Calculate video quality metrics
     try:
