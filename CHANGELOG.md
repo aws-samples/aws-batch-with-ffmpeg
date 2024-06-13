@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## version v0.0.8
+
+### Added
+
+- New compute family available Fargate with Graviton 2: You can run your applications using the Fargate (Serverless) launch type with the ARM64 architecture.
+- Upgrade : FFmpeg 7.0.1 for `intel`, `arm`, `amd`, `nvidia`, `fargate`, `fargate-arm`
+- Improve compatibility with several AWS Regions: ap-southeast-2``ap-south-1``sa-east-1``eu-west-3``us-east-1``us-west-2``eu-central-1`
+
+### Changed
+
+- Fix stack destroy issues
+- Fix multi region deployment
+
 ## version v0.0.7
 
 ### Changed

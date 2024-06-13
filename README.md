@@ -117,18 +117,19 @@ So, parameters of the solution are
 - `ìnput_url`: AWS S3 url synced to the local storage and tranformed to local path by the solution.
 - `output_file_options`: FFmpeg output file options described in the official documentation.
 - `output_url`: AWS S3 url synced from the local storage to AWS S3 storage.
-- `compute`: Instances family used to compute the media asset : `intel`, `arm`, `amd`, `nvidia`, `fargate`, `xilinx`
+- `compute`: Instances family used to compute the media asset : `intel`, `arm`, `amd`, `nvidia`, `fargate`, `fargate-arm`, `xilinx`
 - `name`: metadata of this job for observability.
 
 The solution has different FFmpeg versions per AWS EC2 instance families.
 
 | **Compute** | **FFmpeg version per default** | **FFmpeg version(s) available** |
 |-------------|--------------------------------|---------------------------------|
-| intel       | 6.0 (snapshot)                 | 6.0, 5.1                        |
-| arm         | 6.0 (snapshot)                 | 6.0, 5.1                        |
-| amd         | 6.0 (snapshot)                 | 6.0, 5.1                        |
-| nvidia      | 6.0 (snapshot)                 | 6.0, 5.1                        |
-| fargate     | 6.0 (snapshot)                 | 6.0, 5.1                        |
+| intel       | 7.0.1                          | 6.0, 5.1                        |
+| arm         | 7.0.1                          | 6.0, 5.1                        |
+| amd         | 7.0.1                          | 6.0, 5.1                        |
+| nvidia      | 7.0 (snapshot)                 | 6.0, 5.1                        |
+| fargate     | 7.0.1                          | 6.0, 5.1                        |
+| fargate-arm | 7.0.1                          | 6.0, 5.1                        |
 | xilinx      | 4.4                            | 4.4                             |
 
 In this example we use the AWS SDK "Boto3" (Python) and I want to cut a specific part of a video. First of all, I uploaded a video in the Amazon S3 bucket created by the solution, and complete the parameters below :
@@ -194,8 +195,8 @@ Per default, AWS Batch chooses by itself an EC2 instance type available. If I wa
 instance_type = 'c5.large'
 result = batch.submit_job(
     jobName=job_name,
-    jobQueue="batch-FFmpeg-job-queue-" + compute,
-    jobDefinition="batch-FFmpeg-job-definition-" + compute,
+    jobQueue="batch-ffmpeg-job-queue-" + compute,
+    jobDefinition="batch-ffmpeg-job-definition-" + compute,
     parameters=command,
     nodeOverrides={
             "nodePropertyOverrides": [
@@ -250,7 +251,7 @@ In this example, we use the AWS CLI. A Step Functions execution receives a JSON 
 Parameters of this `input.json are:
 
 - `$.name`: metadata of this job for observability.
-- `$.compute`: Instances family used to compute the media asset : `intel`, `arm`, `amd`, `nvidia`, `xilinx`.
+- `$.compute`: Instances family used to compute the media asset : `intel`, `arm`, `amd`, `nvidia`, `xilinx`, `fargate`, `fargate-arm`.
 - `$.input.s3_bucket` and `$.input.s3_prefix`: S3 url of the list of Amazon S3 Objects to be processed by FFMPEG.
 - `$.input.file_options`: FFmpeg input file options described in the official documentation.
 - `$.output.s3_bucket` and `$.output.s3_prefix`: S3 url where all processed media assets will be stored on Amazon S3.
@@ -301,7 +302,7 @@ The CDK stack is described in the directory `/cdk`.
 
 ## Performance and quality metrics
 
-AWS Customers also wants to use this solution to benchmark the video encoding performance and quality of Amazon EC2 instance families. I analyze performance and video quality metrics thanks to AWS X-Ray service. i define 3 segments : Amazon S3 download, FFmpeg Execution and Amazon S3 upload.
+AWS Customers also wants to use this solution to benchmark the video encoding performance and quality of Amazon EC2 instance families. I analyze performance and video quality metrics thanks to AWS X-Ray service. I define 3 segments : Amazon S3 download, FFmpeg Execution and Amazon S3 upload.
 
 If I switch the AWS SSM (Systems Manager) Parameter `/batch-ffmpeg/ffqm` to `TRUE`, quality metrics PSNR, SSIM, VMAF are calculated and exported as an AWS X-RAY metadata and as a JSON file in the Amazon S3 bucket with the key prefix `/metrics/ffqm`. Those metrics are available through AWS Athena views `batch_FFmpeg_ffqm_psnr`, `batch_FFmpeg_ffqm_ssim`, `batch_FFmpeg_ffqm_vmaf`.
 

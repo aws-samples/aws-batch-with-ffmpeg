@@ -114,8 +114,11 @@ def main(
         s3_client=s3_client,
         fsx_lustre_mount_point=fsx_lustre_mount_point,
     )
+    # Nvidia debug command to logged in console
+    if aws_batch_jq_name == "batch-ffmpeg-job-queue-nvidia":
+        nvidia_smi()
 
-    # ffmpeg command creation
+    # FFmpeg command creation
     command_list = ["ffmpeg"]
     if global_options:
         command_list = command_list + shlex.split(global_options)
@@ -130,7 +133,7 @@ def main(
             command_list = command_list + shlex.split(output_file_options)
         command_list.append(output_file_path)
 
-    # ffmpeg execution
+    # FFmpeg execution
     logging.info("ffmpeg command to launch : %s", " ".join(command_list))
     subsegment = xray_recorder.begin_subsegment("cmd-execution")
     subsegment.put_metadata("command", " ".join(command_list))
@@ -218,6 +221,28 @@ def main(
     # Clean
     xray_recorder.end_segment()
     sys.exit(0)
+
+
+def nvidia_smi():
+    """for NVIDIA GPU only : ﬁrst table reﬂects the information about all available GPUs. The second table tells you about the processes using GPUs."""
+    p = subprocess.run(
+        ["nvidia-smi"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        shell=False,
+        cwd=None,
+        timeout=None,
+        check=False,
+        encoding=None,
+    )  # nosec B603 B607
+    if p.returncode != 0:
+        logging.error("Nvidia smi command failed - return code : %d", p.returncode)
+        logging.error("Nvidia smi command failed - output : %s", p.stdout)
+        logging.error("Nvidia smi command failed - error : %s", p.stderr)
+        sys.exit(1)
+    logging.info(
+        "Nvidia smi command succeeded %d %s %s", p.returncode, p.stdout, p.stderr
+    )
 
 
 def prepare_assets(

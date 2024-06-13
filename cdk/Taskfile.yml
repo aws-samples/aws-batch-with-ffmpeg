@@ -38,16 +38,33 @@ tasks:
       - cdk deploy --all --require-approval never --context batch-ffmpeg:lustre-fs:enable=true
 
   destroy-regions:
-    #deps: [build-lambda]
     cmds:
-      - export AWS_DEFAULT_REGION=ap-southeast-2 && python3 cdk/src/appregistry_delete.py && cdk destroy --all --force && (aws ecr delete-repository --repository-name batch-ffmpeg --force || true)
-      - export AWS_DEFAULT_REGION=ap-south-1 && python3 cdk/src/appregistry_delete.py && cdk destroy --all --force && (aws ecr delete-repository --repository-name batch-ffmpeg --force || true)
-      - export AWS_DEFAULT_REGION=sa-east-1 && python3 cdk/src/appregistry_delete.py && cdk destroy --all --force && (aws ecr delete-repository --repository-name batch-ffmpeg --force || true)
-      - export AWS_DEFAULT_REGION=eu-west-3 && python3 cdk/src/appregistry_delete.py && cdk destroy --all --force && (aws ecr delete-repository --repository-name batch-ffmpeg --force || true)
-      - export AWS_DEFAULT_REGION=us-east-1 && python3 cdk/src/appregistry_delete.py && cdk destroy --all --force && (aws ecr delete-repository --repository-name batch-ffmpeg --force || true)
-      - export AWS_DEFAULT_REGION=us-west-2 && python3 cdk/src/appregistry_delete.py && cdk destroy --all --force && (aws ecr delete-repository --repository-name batch-ffmpeg --force || true)
-      - export AWS_DEFAULT_REGION=eu-central-1 && python3 cdk/src/appregistry_delete.py && cdk destroy --all --force && (aws ecr delete-repository --repository-name batch-ffmpeg --force || true)
-      - export AWS_DEFAULT_REGION=""
+      - task: destroy-region
+        vars: { AWS_REGION: "ap-south-1" }
+      - task: destroy-region
+        vars: { AWS_REGION: "ap-southeast-2" }
+      - task: destroy-region
+        vars: { AWS_REGION: "sa-east-1" }
+      - task: destroy-region
+        vars: { AWS_REGION: "eu-west-3" }
+      - task: destroy-region
+        vars: { AWS_REGION: "us-east-1" }
+      - task: destroy-region
+        vars: { AWS_REGION: "us-west-2" }
+      - task: destroy-region
+        vars: { AWS_REGION: "eu-central-1" }
+      - task: destroy-region
+        vars: { AWS_REGION: "eu-west-1" }
+      - python3 cdk/src/delete_buckets.py -b "batch-ffmpeg*"
+
+  destroy-region:
+    env:
+      AWS_DEFAULT_REGION: "{{.AWS_REGION}}"
+    cmds:
+      - echo AWS REGION - $AWS_DEFAULT_REGION
+      - python3 cdk/src/appregistry_delete.py  && python3 cdk/src/eni_delete.py
+      - cdk destroy --all --force
+      - aws ecr delete-repository --repository-name batch-ffmpeg  --force --output text || true
 
   destroy-light:
     - cdk destroy batch-ffmpeg-api-stack batch-ffmpeg-metrics-stack batch-ffmpeg-stack
@@ -55,9 +72,8 @@ tasks:
   destroy:
     desc: Destroy cdk stack and virtualenv
     cmds:
-      - python3 cdk/src/appregistry_delete.py
-      - cdk destroy --all --force
-      - aws ecr delete-repository --repository-name batch-ffmpeg --force || true
+      - task: destroy-region
+        vars: { AWS_REGION: "{{.AWS_DEFAULT_REGION}}" }
       - rm -rf .venv/ || true
       - rm -rf .task/ || true
       - rm  -f .env || true

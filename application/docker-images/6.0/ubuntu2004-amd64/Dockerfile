@@ -32,7 +32,7 @@ RUN add-apt-repository ppa:deadsnakes/ppa -y \
 
 FROM base as build
 
-ENV     FFMPEG_VERSION=snapshot \
+ENV     FFMPEG_VERSION=6.1.1 \
         AOM_VERSION=3.7.0 \
         FDKAAC_VERSION=2.0.2 \
         FONTCONFIG_VERSION=2.14.2 \

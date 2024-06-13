@@ -9,6 +9,7 @@ import timeit
 from datetime import datetime, timezone
 
 import boto3
+import botocore
 
 LOGLEVEL = os.environ.get("LOGLEVEL", "INFO").upper()
 logging.basicConfig(level=LOGLEVEL)
@@ -66,11 +67,34 @@ def update_athena_views():
                 QueryString=ddl.read(),
                 ResultConfiguration={"OutputLocation": athena_result_location},
             )
+            query_execution_id = response["QueryExecutionId"]
             logging.info(
                 "Running athena query of %s : Query execution Id = %s",
                 ddl_file,
-                response["QueryExecutionId"],
+                query_execution_id,
             )
+            while True:
+                query_execution = athena.get_query_execution(
+                    QueryExecutionId=query_execution_id
+                )
+                status = query_execution["QueryExecution"]["Status"]["State"]
+                if status in ["SUCCEEDED", "FAILED", "CANCELLED"]:
+                    break
+                time.sleep(1)
+            # Check the final status of the query execution
+            if status == "SUCCEEDED":
+                logging.info("Query executed successfully!")
+            elif status == "FAILED":
+                logging.error(
+                    f'Query failed: {query_execution["QueryExecution"]["Status"]["StateChangeReason"]}'
+                )
+                raise botocore.clientException(
+                    f'Query failed: {query_execution["QueryExecution"]["Status"]["StateChangeReason"]}'
+                )
+            else:
+                logging.warning(
+                    f'Query was cancelled: {query_execution["QueryExecution"]["Status"]["StateChangeReason"]}'
+                )
 
 
 def wait_crawler_running(
@@ -140,11 +164,17 @@ def export_handler(event, context):
     wait_crawler_running(crawler_name=crawler_name)
     logging.info("Updating Athena views")
     # Update Athena views
-    update_athena_views()
-    return {
-        "statusCode": 200,
-        "body": json.dumps({"message": f"{len(trace_ids)} traces exported"}),
-    }
+    try:
+        update_athena_views()
+        return {
+            "statusCode": 200,
+            "body": json.dumps({"message": f"{len(trace_ids)} traces exported"}),
+        }
+    except Exception as e:
+        return {
+            "statusCode": 500,
+            "body": json.dumps({"message": e}),
+        }
 
 
 if __name__ == "__main__":

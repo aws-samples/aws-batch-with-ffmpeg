@@ -8,17 +8,13 @@
 #
 # Guillaume Marchand - AWS - gmarchan@amazon.fr
 #
+FROM        ubuntu:20.04 AS base
 
-# Development
-FROM        nvidia/cuda:12.3.1-devel-ubuntu20.04 AS devel-base
-
-ENV	    NVIDIA_DRIVER_CAPABILITIES compute,utility,video
-ENV	    DEBIAN_FRONTEND=noninteractive
 WORKDIR     /tmp/workdir
 
 RUN     apt-get -yqq update && \
         apt-get -yqq upgrade && \
-        apt-get install -yqq --no-install-recommends ca-certificates expat libgomp1 software-properties-common libxcb-shape0-dev && \
+        apt-get install -yqq --no-install-recommends ca-certificates expat libgomp1 software-properties-common && \
         apt-get autoremove -y && \
         apt-get clean -y && \
         rm -rf /var/lib/apt/lists/*
@@ -34,36 +30,9 @@ RUN add-apt-repository ppa:deadsnakes/ppa -y \
     && update-alternatives --install /usr/bin/python python /usr/bin/python${PYTHON_VERSION} 1 \
     && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1
 
-# Runtime
-FROM        nvidia/cuda:12.3.1-runtime-ubuntu20.04 AS runtime-base
+FROM base as build
 
-ENV	    NVIDIA_DRIVER_CAPABILITIES compute,utility,video
-ENV	    DEBIAN_FRONTEND=noninteractive
-WORKDIR     /tmp/workdir
-
-RUN     apt-get -yqq update && \
-        apt-get -yqq upgrade && \
-        apt-get install -yqq --no-install-recommends ca-certificates expat libgomp1 software-properties-common libxcb-shape0-dev && \
-        apt-get autoremove -y && \
-        apt-get clean -y && \
-        rm -rf /var/lib/apt/lists/*
-
-# Install Python 3
-ARG PYTHON_VERSION=3.11
-RUN add-apt-repository ppa:deadsnakes/ppa -y \
-    && apt-get install -yqq --fix-missing --no-install-recommends curl python${PYTHON_VERSION} python${PYTHON_VERSION}-dev python${PYTHON_VERSION}-distutils python${PYTHON_VERSION}-venv python-is-python3 \
-    && apt-get clean -y \
-    && rm -rf /var/lib/apt/lists/* \
-    && curl -sS https://bootstrap.pypa.io/get-pip.py | python${PYTHON_VERSION} \
-    && python${PYTHON_VERSION} -m pip install --quiet --no-cache-dir --upgrade pip \
-    && update-alternatives --install /usr/bin/python python /usr/bin/python${PYTHON_VERSION} 1 \
-    && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1
-
-# Build
-FROM devel-base as build
-
-ENV     FFMPEG_VERSION=6.1.1 \
-        NVIDIA_HEADERS_VERSION=12.1.14.0 \
+ENV     FFMPEG_VERSION=7.0.1 \
         AOM_VERSION=3.7.0 \
         FDKAAC_VERSION=2.0.2 \
         FONTCONFIG_VERSION=2.14.2 \
@@ -80,7 +49,7 @@ ENV     FFMPEG_VERSION=6.1.1 \
         VORBIS_VERSION=1.3.7 \
         VPX_VERSION=1.13.1 \
         WEBP_VERSION=1.3.2 \
-        #X264_VERSION=20170226-2245-stable \
+        X264_VERSION=20170226-2245-stable \
         X265_VERSION=3.4 \
         XVID_VERSION=1.3.7 \
         LIBARIBB24_VERSION=1.0.3 \
@@ -122,15 +91,6 @@ RUN      buildDeps="autoconf \
         apt-get install -yqq --no-install-recommends ${buildDeps} && \
         pip3 install --quiet --no-cache-dir meson
 
-RUN echo "## https://docs.nvidia.com/video-technologies/video-codec-sdk/12.1/ffmpeg-with-nvidia-gpu/index.html#compiling-for-linux"
-RUN \
-        DIR=/tmp/nv-codec-headers && \
-        git clone https://git.videolan.org/git/ffmpeg/nv-codec-headers.git ${DIR} && \
-        cd ${DIR} && \
-        git checkout n${NVIDIA_HEADERS_VERSION} && \
-        make PREFIX="${PREFIX}" && \
-        make install PREFIX="${PREFIX}" && \
-        rm -rf ${DIR}
 RUN echo "## libvmaf https://github.com/Netflix/vmaf"
 RUN \
         DIR=/tmp/vmaf && \
@@ -399,7 +359,7 @@ RUN \
         make && \
         make install && \
         rm -rf ${DIR}
-RUN echo "## Download ffmpeg https://ffmpeg.org/"
+RUN echo "## ffmpeg https://ffmpeg.org/"
 RUN  \
         DIR=/tmp/ffmpeg && mkdir -p ${DIR} && cd ${DIR} && \
         curl -sLO https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.bz2 && \
@@ -408,11 +368,6 @@ RUN  \
         --disable-debug \
         --disable-doc \
         --disable-ffplay \
-        --enable-cuda \
-        --enable-cuda-nvcc \
-        --enable-cuvid \
-        --enable-libnpp \
-        --enable-nvenc \
         --enable-fontconfig \
         --enable-gpl \
         --enable-libaom \
@@ -420,7 +375,7 @@ RUN  \
         --enable-libass \
         --enable-libfdk_aac \
         --enable-libfreetype \
-        #--enable-libharfbuzz \
+        --enable-libharfbuzz \
         --enable-libfribidi \
         --enable-libfontconfig \
         --enable-libkvazaar \
@@ -430,7 +385,7 @@ RUN  \
         --enable-libopenjpeg \
         --enable-libopus \
         --enable-libtheora \
-        #--enable-libvmaf \
+        --enable-libvmaf \
         --enable-libvorbis \
         --enable-libvpx \
         --enable-libwebp \
@@ -443,8 +398,8 @@ RUN  \
         --enable-small \
         --enable-version3 \
         --disable-static \
-        --extra-cflags="-I${PREFIX}/include -I${PREFIX}/include/ffnvcodec -I/usr/local/cuda/include/" \
-        --extra-ldflags="-L${PREFIX}/lib -L/usr/local/cuda/lib64 -L/usr/local/cuda/lib32/" \
+        --extra-cflags="-I${PREFIX}/include" \
+        --extra-ldflags="-L${PREFIX}/lib" \
         --extra-libs=-ldl \
         --extra-libs=-lpthread \
         --prefix="${PREFIX}" && \
@@ -458,27 +413,22 @@ RUN  \
 
 RUN echo "## cleanup"
 RUN \
-        LD_LIBRARY_PATH="${PREFIX}/lib:${PREFIX}/lib64:${LD_LIBRARY_PATH}" ldd ${PREFIX}/bin/ffmpeg | grep opt/ffmpeg | cut -d ' ' -f 3 | xargs -i cp {} /usr/local/lib/ && \
+        ldd ${PREFIX}/bin/ffmpeg | grep opt/ffmpeg | cut -d ' ' -f 3 | xargs -i cp {} /usr/local/lib/ && \
         for lib in /usr/local/lib/*.so.*; do ln -s "${lib##*/}" "${lib%%.so.*}".so; done && \
         cp ${PREFIX}/bin/* /usr/local/bin/ && \
-        cp -r ${PREFIX}/share/* /usr/local/share/ && \
+        cp -r ${PREFIX}/share/ffmpeg /usr/local/share/ && \
         LD_LIBRARY_PATH=/usr/local/lib ffmpeg -buildconf && \
         cp -r ${PREFIX}/include/libav* ${PREFIX}/include/libpostproc ${PREFIX}/include/libsw* /usr/local/include && \
         mkdir -p /usr/local/lib/pkgconfig && \
         for pc in ${PREFIX}/lib/pkgconfig/libav*.pc ${PREFIX}/lib/pkgconfig/libpostproc.pc ${PREFIX}/lib/pkgconfig/libsw*.pc; do \
-        sed "s:${PREFIX}:/usr/local:g; s:/lib64:/lib:g" <"$pc" >/usr/local/lib/pkgconfig/"${pc##*/}"; \
+        sed "s:${PREFIX}:/usr/local:g" <"$pc" >/usr/local/lib/pkgconfig/"${pc##*/}"; \
         done
 
-FROM        runtime-base AS release
+FROM        base AS release
 
 ENV         LD_LIBRARY_PATH=/usr/local/lib:/usr/local/lib64
 
-# copy only needed files, without copying nvidia dev files
-COPY --from=build /usr/local/bin /usr/local/bin/
-COPY --from=build /usr/local/share /usr/local/share/
-COPY --from=build /usr/local/lib /usr/local/lib/
-COPY --from=build /usr/local/include /usr/local/include/
-
+COPY --from=build /usr/local /usr/local/
 WORKDIR /opt/aws-batch-ffmpeg/batch
 COPY DroidSansMono.ttf ffmpeg_wrapper.py requirements.txt ./
 COPY aws aws/

@@ -13,42 +13,6 @@ tasks:
       - |
         {{.DOCKER_EXE}} version
 
-  kaniko-nvidia:
-    desc: "Build Container image for nvidia"
-    cmds:
-      - task: kaniko-build
-        vars:
-          VARIANT: nvidia2004
-          VERSION: 6.0
-          ARCH: amd64
-
-  kaniko-xilinx:
-    desc: "Build Container image for xilinx"
-    cmds:
-      - task: kaniko-build
-        vars:
-          VARIANT: xilinx2004
-          VERSION: 4.4
-          ARCH: amd64
-
-  kaniko-ubuntu:
-    desc: "Build Container image for ubuntu"
-    cmds:
-      - task: kaniko-build
-        vars:
-          VARIANT: ubuntu2004
-          VERSION: 6.0
-          ARCH: amd64
-
-  kaniko-arm64:
-    desc: "Build Container image for ubuntu"
-    cmds:
-      - task: kaniko-build
-        vars:
-          VARIANT: ubuntu2004
-          VERSION: 6.0
-          ARCH: arm64
-
   docker-xilinx:
     desc: "Build Container image for xilinx"
     deps: [docker-login]
@@ -76,7 +40,7 @@ tasks:
       - task: docker-build
         vars:
           VARIANT: ubuntu2004-amd64
-          VERSION: 6.0
+          VERSION: 7.0
           ARCH: linux/amd64
 
   docker-arm64:
@@ -86,7 +50,7 @@ tasks:
       - task: docker-build
         vars:
           VARIANT: ubuntu2004-arm64
-          VERSION: 6.0
+          VERSION: 7.0
           ARCH: linux/arm64
 
   docker-login:

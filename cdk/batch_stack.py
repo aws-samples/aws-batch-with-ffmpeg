@@ -145,13 +145,17 @@ class BatchStack(Stack):
         )
 
         # EC2 > AMIs
-        # TODO Update to Amazon Linux 2023 when Lustre client will be available : https://github.com/amazonlinux/amazon-linux-2023/issues/309
+
+        # TODO Update to Amazon Linux 2023 when Lustre will work : https://github.com/amazonlinux/amazon-linux-2023/issues/723
         ecs_amd64_ami = ec2.MachineImage.from_ssm_parameter(
+            # "/aws/service/ecs/optimized-ami/amazon-linux-2023/recommended/image_id"
             "/aws/service/ecs/optimized-ami/amazon-linux-2/recommended/image_id"
         )
         ecs_arm64_ami = ec2.MachineImage.from_ssm_parameter(
+            # "/aws/service/ecs/optimized-ami/amazon-linux-2023/arm64/recommended/image_id"
             "/aws/service/ecs/optimized-ami/amazon-linux-2/arm64/recommended/image_id"
         )
+        # TODO Update to Amazon Linux 2023 when AL 2023 GPU will be available : https://github.com/amazonlinux/amazon-linux-2023/issues/12
         ecs_nvidia_ami = ec2.MachineImage.from_ssm_parameter(
             "/aws/service/ecs/optimized-ami/amazon-linux-2/gpu/recommended/image_id"
         )
@@ -174,6 +178,10 @@ class BatchStack(Stack):
                 *instances_classes_not_available,
             ]
 
+        # nvidia on arm
+        # TODO Waiting deployment of a new ECS AMI with GPU + ARM : https://github.com/aws/amazon-ecs-ami/issues/220
+        # batch_compute_instance_classes_nvidiaarm = [ec2.InstanceClass.G5G]
+
         # intel
         batch_compute_instance_classes_intel = [
             ec2.InstanceClass.C5,
@@ -184,6 +192,8 @@ class BatchStack(Stack):
             ec2.InstanceClass.M5,
             ec2.InstanceClass.M5D,
             ec2.InstanceClass.M6I,
+            ec2.InstanceClass.M7I,
+            ec2.InstanceClass.C7I,
         ]
         if self._region not in [
             "ap-south-1",
@@ -195,8 +205,6 @@ class BatchStack(Stack):
                 ec2.InstanceClass.M5N,
                 ec2.InstanceClass.C6ID,
                 ec2.InstanceClass.M6ID,
-                # TODO Waiting deployment
-                # ec2.InstanceClass.M7I,
             ]
             # Concatenate all sequences
             batch_compute_instance_classes_intel = [
@@ -210,6 +218,8 @@ class BatchStack(Stack):
             ec2.InstanceClass.C6GD,
             ec2.InstanceClass.C6GN,
             ec2.InstanceClass.M6G,
+            ec2.InstanceClass.M7G,
+            ec2.InstanceClass.M7GD,
         ]
         if self._region not in [
             "ap-southeast-2",
@@ -222,11 +232,7 @@ class BatchStack(Stack):
             instances_classes_not_available = [
                 ec2.InstanceClass.M6GD,
                 ec2.InstanceClass.C7G,
-                # TODO Waiting deployment
-                # ec2.InstanceClass.C7GD,
-                ec2.InstanceClass.M7G,
-                # TODO Waiting deployment
-                # ec2.InstanceClass.M7GD,
+                ec2.InstanceClass.C7GD,
             ]
             # Concatenate all sequences
             batch_compute_instances_classes_arm = [
@@ -240,14 +246,20 @@ class BatchStack(Stack):
             ec2.InstanceClass.M5A,
             ec2.InstanceClass.M5AD,
         ]
-        if self._region not in ["ap-south-1", "eu-west-3"]:
+        if self._region not in [
+            "ap-south-1",
+            "eu-west-3",
+            "ap-southeast-2",
+            "sa-east-1",
+        ]:
             instances_classes_not_available = [
                 ec2.InstanceClass.C5AD,
                 ec2.InstanceClass.C6A,
                 ec2.InstanceClass.M6A,
-                # TODO Waiting deployment
-                # ec2.InstanceClass.M7A,
-                # ec2.InstanceClass.C7A,
+                ec2.InstanceClass.C7A,
+                ec2.InstanceClass.M7A,
+                ec2.InstanceClass.M6A,
+                ec2.InstanceClass.C6A,
             ]
             # Concatenate all sequences
             batch_compute_instances_classes_amd = [
@@ -316,7 +328,7 @@ class BatchStack(Stack):
             memory=cdk.Size.mebibytes(8192),
             volumes=lustre_volumes,
         )
-        amd64_tag = "6.0-ubuntu2004-amd64"
+        amd64_tag = "7.0-ubuntu2004-amd64"
         batch_jobdef_amd64_container = batch.EcsEc2ContainerDefinition(
             self,
             "container-def-amd64",
@@ -331,7 +343,7 @@ class BatchStack(Stack):
             volumes=lustre_volumes,
         )
 
-        arm64_tag = "6.0-ubuntu2004-arm64"
+        arm64_tag = "7.0-ubuntu2004-arm64"
         batch_jobdef_arm64_container = batch.EcsEc2ContainerDefinition(
             self,
             "container-def-arm64",
@@ -356,6 +368,21 @@ class BatchStack(Stack):
             memory=cdk.Size.mebibytes(8192),
             fargate_platform_version=ecs.FargatePlatformVersion.LATEST,
             execution_role=batch_execution_role,
+            job_role=batch_job_role,
+            volumes=None,  # TODO Lustre not available for Fargate : https://github.com/aws/containers-roadmap/issues/650
+        )
+
+        batch_jobdef_fargate_arm64_container = batch.EcsFargateContainerDefinition(
+            self,
+            "container-def-fargate-arm",
+            image=ecs.ContainerImage.from_ecr_repository(ecr_registry, arm64_tag),
+            command=ffmpeg_python_script_command,
+            environment=job_definition_container_env_base,  # TODO Lustre not available for Fargate : https://github.com/aws/containers-roadmap/issues/650
+            cpu=2,
+            memory=cdk.Size.mebibytes(8192),
+            fargate_platform_version=ecs.FargatePlatformVersion.LATEST,
+            execution_role=batch_execution_role,
+            fargate_cpu_architecture=ecs.CpuArchitecture.ARM64,
             job_role=batch_job_role,
             volumes=None,  # TODO Lustre not available for Fargate : https://github.com/aws/containers-roadmap/issues/650
         )
@@ -501,18 +528,18 @@ class BatchStack(Stack):
         )
         self.video_batch_jobs.append(ffmpeg_fargate_job)
 
-        # TODO Waiting : https://github.com/aws/aws-cdk/issues/26484 and https://github.com/aws/aws-cdk/pull/26506
-        # ffmpeg_fargate_arm_job = VideoBatchJob(
-        #     self,
-        #     construct_id="fargate-arm-job",
-        #     proc_name="fargate-arm",
-        #     ec2_ami=None,
-        #     ec2_vpc=vpc,
-        #     ec2_vpc_sg=sg_batch,
-        #     ec2_vpc_subnets=subnets,
-        #     batch_compute_instance_classes=None,
-        #     batch_jobdef_container=batch_jobdef_fargate_arm_container,
-        #     batch_jobdef_parameters=ffmpeg_python_script_default_values,
-        #     batch_compute_env_instanceprofile=None,
-        # )
-        # self.video_batch_jobs.append(ffmpeg_fargate_arm_job)
+        ffmpeg_fargate_arm_job = VideoBatchJob(
+            self,
+            construct_id="fargate-arm-job",
+            proc_name="fargate-arm",
+            ec2_ami=None,
+            ec2_vpc=vpc,
+            ec2_vpc_sg=sg_batch,
+            ec2_vpc_subnets=subnet_selection,
+            batch_compute_instance_classes=None,
+            batch_jobdef_container=batch_jobdef_fargate_arm64_container,
+            batch_jobdef_parameters=ffmpeg_python_script_default_values,
+            batch_compute_env_instance_role=None,
+            spot=False,  # 'Linux tasks with the ARM64 architecture don't support the Fargate Spot capacity provider.' https://docs.aws.amazon.com/AmazonECS/latest/developerguide/ecs-arm64.html
+        )
+        self.video_batch_jobs.append(ffmpeg_fargate_arm_job)

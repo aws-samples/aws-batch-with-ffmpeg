@@ -6,6 +6,7 @@ from aws_cdk import aws_ec2 as ec2
 from aws_cdk import aws_fsx as fsx
 from constructs import Construct
 from from_root import from_root
+import hashlib
 
 
 class VideoBatchJob(Construct):
@@ -30,6 +31,7 @@ class VideoBatchJob(Construct):
         batch_compute_instance_classes=None,
         batch_compute_instance_types=None,
         lustre_fs: fsx.LustreFileSystem = None,
+        spot: bool = True,
     ) -> None:
         super().__init__(scope, construct_id)
 
@@ -91,10 +93,15 @@ class VideoBatchJob(Construct):
                     )
 
             # Launch Template
+            md5_hash = hashlib.md5(
+                multipart_user_data.render().encode(), usedforsecurity=False
+            )
+            short_hash = md5_hash.hexdigest()[:5]
+
             launch_template = ec2.LaunchTemplate(
                 self,
-                "lt-" + proc_name,
-                launch_template_name="batch-ffmpeg-lt-" + proc_name,
+                "lt-" + proc_name + "-" + short_hash,
+                launch_template_name="batch-ffmpeg-lt-" + proc_name + "-" + short_hash,
                 user_data=multipart_user_data,
             )
             compute_environment = batch.ManagedEc2EcsComputeEnvironment(
@@ -113,8 +120,7 @@ class VideoBatchJob(Construct):
                 launch_template=launch_template,
                 security_groups=[ec2_vpc_sg],
                 vpc_subnets=ec2_vpc_subnets,
-                spot=True,
-                spot_bid_percentage=100,
+                spot=spot,
                 maxv_cpus=4096,
             )
         else:
@@ -124,7 +130,7 @@ class VideoBatchJob(Construct):
                 vpc=ec2_vpc,
                 security_groups=[ec2_vpc_sg],
                 vpc_subnets=ec2_vpc_subnets,
-                spot=True,
+                spot=spot,
             )
         compute_environment.node.add_dependency(ec2_vpc_sg)
         # Job Queue

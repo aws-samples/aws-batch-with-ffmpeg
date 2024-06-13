@@ -10,7 +10,7 @@
 #
 
 # Development
-FROM        nvidia/cuda:12.3.1-devel-ubuntu20.04 AS devel-base
+FROM        nvidia/cuda:12.5.0-devel-ubuntu20.04 AS devel-base
 
 ENV	    NVIDIA_DRIVER_CAPABILITIES compute,utility,video
 ENV	    DEBIAN_FRONTEND=noninteractive
@@ -35,7 +35,7 @@ RUN add-apt-repository ppa:deadsnakes/ppa -y \
     && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1
 
 # Runtime
-FROM        nvidia/cuda:12.3.1-runtime-ubuntu20.04 AS runtime-base
+FROM        nvidia/cuda:12.5.0-runtime-ubuntu20.04 AS runtime-base
 
 ENV	    NVIDIA_DRIVER_CAPABILITIES compute,utility,video
 ENV	    DEBIAN_FRONTEND=noninteractive
@@ -62,8 +62,8 @@ RUN add-apt-repository ppa:deadsnakes/ppa -y \
 # Build
 FROM devel-base as build
 
-ENV     FFMPEG_VERSION=6.1.1 \
-        NVIDIA_HEADERS_VERSION=12.1.14.0 \
+ENV     FFMPEG_VERSION=snapshot \
+        NVIDIA_HEADERS_VERSION=12.2.72.0 \
         AOM_VERSION=3.7.0 \
         FDKAAC_VERSION=2.0.2 \
         FONTCONFIG_VERSION=2.14.2 \
@@ -264,7 +264,8 @@ RUN \
         mkdir -p ${DIR} && \
         cd ${DIR} && \
         curl -sLO https://downloads.xvid.com/downloads/xvidcore-${XVID_VERSION}.tar.gz && \
-        tar -zx -f xvidcore-${XVID_VERSION}.tar.gz && \
+        ls -al xvidcore-${XVID_VERSION}.tar.gz && \
+        tar -zvx -f xvidcore-${XVID_VERSION}.tar.gz && \
         cd xvidcore/build/generic && \
         ./configure --prefix="${PREFIX}" --bindir="${PREFIX}/bin" && \
         make && \

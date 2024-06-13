@@ -20,6 +20,14 @@ mainSteps:
       SubnetId: %SUBNET_ID%
       UserData: %USER_DATA%
       IamInstanceProfileArn: %INSTANCE_PROFILE_ARN%
+      TagSpecifications:
+        - ResourceType: instance
+          Tags:
+            - Key: application
+              Value: batch-ffmpeg
+            - Key: hash-userdata
+              Value: %HASH_USERDATA%
+
   - name: InstanceRunning
     action: aws:changeInstanceState
     description: Wait ec2 instance is running
