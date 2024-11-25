@@ -1,0 +1,88 @@
+schemaVersion: "0.3"
+assumeRole: "{{AutomationAssumeRole}}"
+parameters:
+  AutomationAssumeRole:
+    type: "AWS::IAM::Role::Arn"
+    default: %ROLE_ARN%
+    description: The ARN of the role that allows Automation to perform the actions on your behalf.
+  file:
+    type: String
+    description: "(Required) The file to preload on Lustre cluster"
+mainSteps:
+  - name: LaunchMicroInstance
+    description: Launch a micro instance which mount the Lustre Cluster and preload files
+    action: aws:runInstances
+    nextStep: InstanceRunning
+    isEnd: false
+    inputs:
+      ImageId: %IMAGE_ID%
+      InstanceType: t2.micro
+      SubnetId: %SUBNET_ID%
+      UserData: %USER_DATA%
+      IamInstanceProfileArn: %INSTANCE_PROFILE_ARN%
+      TagSpecifications:
+        - ResourceType: instance
+          Tags:
+            - Key: application
+              Value: batch-ffmpeg
+            - Key: hash-userdata
+              Value: %HASH_USERDATA%
+
+  - name: InstanceRunning
+    action: aws:changeInstanceState
+    description: Wait ec2 instance is running
+    nextStep: PreloadFileListOnLustre
+    isEnd: false
+    inputs:
+      InstanceIds: "{{ LaunchMicroInstance.InstanceIds }}"
+      DesiredState: running
+      CheckStateOnly: true
+  - name: PreloadFileListOnLustre
+    description: Execute Lustre command to preload files
+    action: aws:runCommand
+    nextStep: Loop
+    isEnd: false
+    inputs:
+      InstanceIds: "{{ LaunchMicroInstance.InstanceIds }}"
+      TimeoutSeconds: 600
+      DocumentName: "AWS-RunShellScript"
+      Parameters:
+        commands: |-
+          #!/bin/bash
+          lfs hsm_restore {{ file }}
+  - name: Loop
+    description: Wait 20 times x 30 seconds = 10 min to preload the file
+    action: aws:loop
+    nextStep: TerminateInstance
+    isEnd: false
+    inputs:
+      MaxIterations: 30
+      LoopCondition:
+        Variable: "{{ PreloadFileListOnLustre.Output }}"
+        StringEquals: preloaded
+      Steps:
+        - name: Sleep
+          action: aws:sleep
+          nextStep: IsFileListPreloaded
+          isEnd: false
+          inputs:
+            Duration: PT30S
+        - description: Check if file is preloaded
+          name: IsFileListPreloaded
+          action: aws:runCommand
+          isEnd: true
+          inputs:
+            InstanceIds: "{{ LaunchMicroInstance.InstanceIds }}"
+            TimeoutSeconds: 600
+            DocumentName: AWS-RunShellScript
+            Parameters:
+              commands: |-
+                #!/bin/bash
+                lfs hsm_state {{ file }} | grep -q 'archived' && echo 'preloaded'
+  - name: TerminateInstance
+    description: Terminate the instance
+    action: aws:changeInstanceState
+    isEnd: true
+    inputs:
+      DesiredState: terminated
+      InstanceIds: "{{ LaunchMicroInstance.InstanceIds }}"

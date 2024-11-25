@@ -1,0 +1,89 @@
+version: "3"
+
+vars:
+  CDK: cdk
+
+tasks:
+  synth:
+    desc: Synthesize the CDK app
+    deps: [build-lambda]
+    cmds:
+      - "{{.CDK}} synth"
+
+  diff:
+    desc: Show difference between current state and CDK app
+    cmds:
+      - "{{.CDK}} diff"
+
+  deploy:
+    desc: Deploy the CDK app
+    deps: [build-lambda]
+    cmds:
+      - "{{.CDK}} deploy --all --require-approval never --context batch-ffmpeg:lustre-fs:enable=true"
+
+  destroy:
+    desc: Destroy the CDK app
+    cmds:
+      - task: destroy-region
+        vars: { AWS_REGION: "{{.AWS_DEFAULT_REGION}}" }
+
+  bootstrap:
+    desc: Bootstrap the CDK app
+    cmds:
+      - "{{.CDK}} bootstrap"
+
+  list:
+    desc: List all stacks in the CDK app
+    cmds:
+      - "{{.CDK}} list"
+
+  deploy-registry:
+    desc: Deploy ECR registry stack
+    deps: [build-lambda]
+    cmds:
+      - "{{.CDK}} deploy batch-ffmpeg-registry-stack --require-approval never"
+
+  deploy-metrics:
+    deps: [build-lambda]
+    cmds:
+      - "{{.CDK}} deploy batch-ffmpeg-metrics-stack --require-approval never"
+
+  destroy-regions:
+    cmds:
+      - task: destroy-region
+        vars: { AWS_REGION: "ap-south-1" }
+      - task: destroy-region
+        vars: { AWS_REGION: "ap-southeast-2" }
+      - task: destroy-region
+        vars: { AWS_REGION: "sa-east-1" }
+      - task: destroy-region
+        vars: { AWS_REGION: "eu-west-3" }
+      - task: destroy-region
+        vars: { AWS_REGION: "us-east-1" }
+      - task: destroy-region
+        vars: { AWS_REGION: "us-west-2" }
+      - task: destroy-region
+        vars: { AWS_REGION: "eu-central-1" }
+      - task: destroy-region
+        vars: { AWS_REGION: "eu-west-1" }
+      #- python infrastructure/scripts/delete_buckets.py -b "batch-ffmpeg*"
+
+  destroy-region:
+    deps: [build-lambda]
+    env:
+      AWS_DEFAULT_REGION: "{{.AWS_REGION}}"
+    cmds:
+      - echo AWS REGION - $AWS_DEFAULT_REGION
+      - python infrastructure/scripts/appregistry_delete.py
+      - python infrastructure/scripts/eni_delete.py
+      - "{{.CDK}} destroy --all --force"
+      - aws ecr delete-repository --repository-name batch-ffmpeg --force --output text || true
+
+  build-lambda:
+    desc: Build Lambda functions
+    cmds:
+      - mkdir -p src/dist
+      - pip install --quiet --target src/dist -r src/lambda_functions/metrics/requirements.txt
+      - cp -r src/lambda_functions/* src/dist
+      - cd src/dist && zip -qqr ../dist_lambda.zip .
+      - rm -rf src/dist

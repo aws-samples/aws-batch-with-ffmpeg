@@ -1,0 +1,93 @@
+version: "3"
+
+vars:
+  DOCKER_COMPOSE: docker-compose
+  DOCKER_EXE: docker
+
+tasks:
+  docker:build:
+    cmds:
+      - "{{.DOCKER_EXE}} build --file docker-images/{{.VERSION}}/{{.VARIANT}}/Dockerfile --platform {{.ARCH}} --tag {{.IMAGE_REPO_NAME}}:{{.VERSION}}-{{.VARIANT}} ."
+      - "{{.DOCKER_EXE}} tag {{.IMAGE_REPO_NAME}}:{{.VERSION}}-{{.VARIANT}} {{.AWS_ACCOUNT_ID}}.dkr.ecr.{{.AWS_DEFAULT_REGION}}.amazonaws.com/{{.IMAGE_REPO_NAME}}:{{.VERSION}}-{{.VARIANT}}"
+    # vars:
+    #   VERSION: "7.0"
+    #   VARIANT: ubuntu2004-amd64
+    #   ARCH: linux/amd64
+
+  docker:push:
+    desc: Push Docker image to ECR
+    cmds:
+      - "{{.DOCKER_EXE}} push {{.AWS_ACCOUNT_ID}}.dkr.ecr.{{.AWS_DEFAULT_REGION}}.amazonaws.com/{{.IMAGE_REPO_NAME}}:{{.VERSION}}-{{.VARIANT}}"
+    # vars:
+    #   VERSION: "7.0"
+    #   VARIANT: ubuntu2004-amd64
+
+  docker:exec:
+    desc: Exec Docker container
+    cmds:
+      - "{{.DOCKER_EXE}} run --platform {{.ARCH}} -v ~/.aws:/root/.aws --entrypoint /bin/bash -it {{.AWS_ACCOUNT_ID}}.dkr.ecr.{{.AWS_DEFAULT_REGION}}.amazonaws.com/{{.IMAGE_REPO_NAME}}:{{.VERSION}}-{{.VARIANT}}"
+    vars:
+      VERSION: "7.0"
+      VARIANT: ubuntu2004-amd64
+      ARCH: linux/amd64
+
+  docker:run:
+    desc: Run Docker container
+    cmds:
+      - "{{.DOCKER_EXE}} run --rm -it --platform {{.ARCH}} --env AWS_XRAY_SDK_ENABLED=False --env S3_BUCKET={{.S3_BUCKET}} -v ~/.aws:/root/.aws {{.AWS_ACCOUNT_ID}}.dkr.ecr.{{.AWS_DEFAULT_REGION}}.amazonaws.com/{{.IMAGE_REPO_NAME}}:{{.VERSION}}-{{.VARIANT}} --input_url s3://{{.S3_BUCKET}}/tests/media-assets/norisleepingmusic2_480p.mp4 --output_url s3://{{.S3_BUCKET}}/tests/media-assets/output/docker-run.mp4 --output_file_options '-an' --name='docker'"
+    vars:
+      VERSION: "7.0"
+      VARIANT: ubuntu2004-amd64
+      ARCH: linux/amd64
+
+  docker:build:nvidia:
+    desc: Build Container image for NVIDIA
+    cmds:
+      - task: docker:build
+        vars: { VARIANT: nvidia2004-amd64, VERSION: "7.0", ARCH: linux/amd64 }
+
+  docker:build:amd64:
+    desc: Build Container image for AMD64
+    cmds:
+      - task: docker:build
+        vars: { VARIANT: ubuntu2004-amd64, VERSION: "7.0", ARCH: linux/amd64 }
+
+  docker:build:arm64:
+    desc: Build Container image for ARM64
+    cmds:
+      - task: docker:build
+        vars: { VARIANT: ubuntu2004-arm64, VERSION: "7.0", ARCH: linux/arm64 }
+
+  docker:build:xilinx:
+    desc: Build Container image for Xilinx
+    cmds:
+      - task: docker:build
+        vars: { VARIANT: xilinx2004-amd64, VERSION: "4.4", ARCH: linux/amd64 }
+
+  lambda:invoke-local:
+    desc: Invoke Lambda function locally
+    cmds:
+      - poetry run python scripts/lambda_local.py
+
+  docker:login:
+    desc: Docker login to ECR
+    cmds:
+      - echo "Logging in to Amazon ECR"
+      - aws ecr get-login-password --region {{.AWS_DEFAULT_REGION}} | {{.DOCKER_EXE}} login --username AWS --password-stdin {{.AWS_ACCOUNT_ID}}.dkr.ecr.{{.AWS_DEFAULT_REGION}}.amazonaws.com
+
+  docker:
+    desc: Build an push all Docker images
+    cmds:
+      - task: docker:login
+      - task: docker:build:nvidia
+      - task: docker:push
+        vars: { VARIANT: nvidia2004-amd64, VERSION: "7.0", ARCH: linux/amd64 }
+      - task: docker:build:amd64
+      - task: docker:push
+        vars: { VARIANT: ubuntu2004-amd64, VERSION: "7.0", ARCH: linux/amd64 }
+      - task: docker:build:arm64
+      - task: docker:push
+        vars: { VARIANT: ubuntu2004-arm64, VERSION: "7.0", ARCH: linux/arm64 }
+      #- task: docker:build:xilinx
+      #- task: docker:push
+      #  vars: { VARIANT: xilinx2004-amd64, VERSION: "4.4", ARCH: linux/amd64 }
