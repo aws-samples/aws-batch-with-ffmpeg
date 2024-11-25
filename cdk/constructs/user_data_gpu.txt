@@ -1,7 +1,0 @@
-#!/bin/bash -ex
-
-echo "AWS Batch for FFMPEG : GPU AMI installs the public epel repo by default. Need to remove it for private subnets "
-
-yum-config-manager --disable epel
-
-echo "AWS Batch for FFMPEG : GPU AMI - END"
