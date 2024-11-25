@@ -52,7 +52,7 @@ tasks:
       - .venv/bin/python3 -m pip install --upgrade --quiet pip
       - .venv/bin/pip install --quiet -r requirements.txt
       - .venv/bin/pip install --quiet -r src/requirements.txt
-      - .venv/bin/pip install --quiet -r tests/requirements.txt
+      - .venv/bin/pip install --quiet -r tests/requirements.txt || true
 
   setup:update:
     desc: upgrade python packages in python virtual env

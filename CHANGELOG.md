@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## version v1.0.0
+
+### Changed
+
+- CDK and application code refactored
+    1. Modular architecture with clear separation of concerns
+    2. Reusable components and shared utilities
+    3. Flexible configuration management
+
 ## version v0.0.8
 
 ### Added
