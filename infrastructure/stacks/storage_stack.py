@@ -65,7 +65,7 @@ class StorageStack(Stack):
                 The created Lustre file system and SSM document, or (None, None) if not enabled.
         """
         lustre_enable = self.node.try_get_context("batch-ffmpeg:lustre-fs:enable")
-        if not lustre_enable:
+        if str(lustre_enable).lower() == "false":
             return None, None
         logging.info("Creating FSx for Lustre file system")
         lustre_subnet = self.vpc.select_subnets(
