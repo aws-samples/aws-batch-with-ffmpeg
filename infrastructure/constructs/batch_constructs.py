@@ -7,7 +7,6 @@ from aws_cdk import (
     aws_batch as batch,
     aws_s3 as s3,
     aws_ecr as ecr,
-    aws_fsx as fsx,
     Duration,
     Size,
     Environment,
@@ -19,7 +18,9 @@ from infrastructure.config.batch_config import (
     PROCESSOR_CONFIGS,
     JOB_DEF_CPU,
     JOB_DEF_MEMORY,
-    LUSTRE_MOUNT_POINT,
+    S3FILES_MOUNT_POINT,
+    S3FILES_ACCESS_POINT_ID_PARAMETER,
+    S3FILES_FILE_SYSTEM_ID_PARAMETER,
     FFMPEG_SCRIPT_COMMAND,
     FFMPEG_SCRIPT_DEFAULT_VALUES,
 )
@@ -60,7 +61,7 @@ class BatchJobConstruct(Construct):
         instance_role: iam.IRole,
         execution_role: iam.IRole,
         job_role: iam.IRole,
-        lustre_fs: fsx.LustreFileSystem = None,
+        shared_fs_enabled: bool = False,
         env: Environment,
         **kwargs,
     ) -> None:
@@ -74,14 +75,16 @@ class BatchJobConstruct(Construct):
 
         # Create all necessary components for the Batch job
         self.create_container_definition(
-            s3_bucket, ecr_repository, execution_role, job_role, lustre_fs
+            s3_bucket, ecr_repository, execution_role, job_role, shared_fs_enabled
         )
         self.create_job_definition()
-        self.create_compute_environment(vpc, security_group, instance_role, lustre_fs)
+        self.create_compute_environment(
+            vpc, security_group, instance_role, shared_fs_enabled
+        )
         self.create_job_queue()
 
     def create_container_definition(
-        self, s3_bucket, ecr_repository, execution_role, job_role, lustre_fs
+        self, s3_bucket, ecr_repository, execution_role, job_role, shared_fs_enabled
     ):
         # Set up basic environment variables
         job_definition_container_env = {
@@ -89,15 +92,16 @@ class BatchJobConstruct(Construct):
             "S3_BUCKET": s3_bucket.bucket_name,
         }
 
-        # Set up Lustre volumes if a Lustre file system is provided
-        lustre_volumes = None
-        if lustre_fs and self.processor_config["container_type"] == "EC2":
-            job_definition_container_env["FSX_MOUNT_POINT"] = LUSTRE_MOUNT_POINT
-            lustre_volumes = [
+        # Mount the shared file system when there is one. Fargate jobs have no
+        # host to mount it on and go through S3.
+        shared_fs_volumes = None
+        if shared_fs_enabled and self.processor_config["container_type"] == "EC2":
+            job_definition_container_env["S3FILES_MOUNT_POINT"] = S3FILES_MOUNT_POINT
+            shared_fs_volumes = [
                 batch.HostVolume(
-                    host_path=LUSTRE_MOUNT_POINT,
-                    name="fsx-lustre-vol-name",
-                    container_path=LUSTRE_MOUNT_POINT,
+                    host_path=S3FILES_MOUNT_POINT,
+                    name="s3files-vol-name",
+                    container_path=S3FILES_MOUNT_POINT,
                 )
             ]
 
@@ -112,7 +116,7 @@ class BatchJobConstruct(Construct):
             "job_role": job_role,
             "cpu": JOB_DEF_CPU,
             "memory": Size.mebibytes(JOB_DEF_MEMORY),
-            "volumes": lustre_volumes,
+            "volumes": shared_fs_volumes,
         }
 
         # Add Linux parameters if specified in the processor configuration
@@ -164,7 +168,7 @@ class BatchJobConstruct(Construct):
             timeout=Duration.hours(10),
         )
 
-    def create_launch_template(self, is_fargate, proc_name, lustre_fs):
+    def create_launch_template(self, is_fargate, proc_name, shared_fs_enabled):
         if not is_fargate:
             # Multipart User Data
             multipart_user_data = ec2.MultipartUserData()
@@ -178,9 +182,9 @@ class BatchJobConstruct(Construct):
                         body=user_data_xray_txt,
                     )
                 )
-            if lustre_fs:
+            if shared_fs_enabled:
                 # BUG issue with GPU AMI https://github.com/aws/amazon-ecs-ami/pull/191
-                if proc_name in ["xilinx", "nvidia"]:
+                if proc_name == "nvidia":
                     with open(
                         from_root("infrastructure", "constructs", "user_data_gpu.txt")
                     ) as f:
@@ -192,23 +196,28 @@ class BatchJobConstruct(Construct):
                             )
                         )
                 with open(
-                    from_root("infrastructure", "constructs", "user_data_lustre.txt")
+                    from_root("infrastructure", "constructs", "user_data_s3files.txt")
                 ) as f:
-                    user_data_lustre_txt = f.read()
-                    user_data_lustre_txt = user_data_lustre_txt.replace(
-                        "%DNS_NAME%", lustre_fs.dns_name
+                    user_data_s3files_txt = f.read()
+                    # Only the SSM parameter names are templated here: the host
+                    # resolves the file system and access point identifiers at
+                    # boot. Reading an attribute of the file system would create
+                    # a cross-stack import that forbids CloudFormation from
+                    # replacing it.
+                    user_data_s3files_txt = user_data_s3files_txt.replace(
+                        "%FILE_SYSTEM_ID_PARAMETER%", S3FILES_FILE_SYSTEM_ID_PARAMETER
                     )
-                    user_data_lustre_txt = user_data_lustre_txt.replace(
-                        "%MOUNT_NAME%", lustre_fs.mount_name
+                    user_data_s3files_txt = user_data_s3files_txt.replace(
+                        "%ACCESS_POINT_ID_PARAMETER%", S3FILES_ACCESS_POINT_ID_PARAMETER
                     )
-                    user_data_lustre_txt = user_data_lustre_txt.replace(
-                        "%MOUNT_POINT%", "/fsx-lustre"
+                    user_data_s3files_txt = user_data_s3files_txt.replace(
+                        "%MOUNT_POINT%", S3FILES_MOUNT_POINT
                     )
 
                     multipart_user_data.add_part(
                         ec2.MultipartBody.from_raw_body(
                             content_type='text/x-shellscript; charset="us-ascii"',
-                            body=user_data_lustre_txt,
+                            body=user_data_s3files_txt,
                         )
                     )
 
@@ -226,7 +235,9 @@ class BatchJobConstruct(Construct):
             )
             return launch_template
 
-    def create_compute_environment(self, vpc, security_group, instance_role, lustre_fs):
+    def create_compute_environment(
+        self, vpc, security_group, instance_role, shared_fs_enabled
+    ):
         if self.processor_config["container_type"] == "FARGATE":
             self.compute_environment = batch.FargateComputeEnvironment(
                 self,
@@ -254,7 +265,7 @@ class BatchJobConstruct(Construct):
 
             is_fargate = self.processor_config["container_type"] == "FARGATE"
             launch_template = self.create_launch_template(
-                is_fargate, self.processor_name, lustre_fs
+                is_fargate, self.processor_name, shared_fs_enabled
             )
 
             # logger.info(f"Instance classes for {self.processor_name}: {instance_classes}")

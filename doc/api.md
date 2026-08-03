@@ -9,7 +9,6 @@
   - [post__batch_execute_arm](#post__batch_execute_arm)
   - [post__batch_execute_intel](#post__batch_execute_intel)
   - [post__state_execute](#post__state_execute)
-  - [post__batch_execute_xilinx](#post__batch_execute_xilinx)
   - [post__batch_execute_fargate](#post__batch_execute_fargate)
   - [post__state_describe](#post__state_describe)
   - [post__batch_execute_nvidia](#post__batch_execute_nvidia)
@@ -44,7 +43,7 @@
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[batchapiba0qXhDPEBUr0E](#schemabatchapiba0qxhdpebur0e)|true|none|
+|body|body|[batchFFmpejIWMTfpPre7F](#schemabatchffmpejiwmtfppre7f)|true|none|
 |» input_file_options|body|string|false|none|
 |» output_url|body|string|false|none|
 |» name|body|string|false|none|
@@ -85,7 +84,7 @@ sigv4
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[batchapibaJsrkUdOCalLU](#schemabatchapibajsrkudocallu)|true|none|
+|body|body|[batchFFmpe5uZPfvUQDlfY](#schemabatchffmpe5uzpfvuqdlfy)|true|none|
 |» jobId|body|string|false|none|
 
 > Example responses
@@ -126,7 +125,7 @@ sigv4
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[batchapiba0qXhDPEBUr0E](#schemabatchapiba0qxhdpebur0e)|true|none|
+|body|body|[batchFFmpejIWMTfpPre7F](#schemabatchffmpejiwmtfppre7f)|true|none|
 |» input_file_options|body|string|false|none|
 |» output_url|body|string|false|none|
 |» name|body|string|false|none|
@@ -172,7 +171,7 @@ sigv4
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[batchapiba0qXhDPEBUr0E](#schemabatchapiba0qxhdpebur0e)|true|none|
+|body|body|[batchFFmpejIWMTfpPre7F](#schemabatchffmpejiwmtfppre7f)|true|none|
 |» input_file_options|body|string|false|none|
 |» output_url|body|string|false|none|
 |» name|body|string|false|none|
@@ -227,7 +226,7 @@ sigv4
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[batchapibaX7LgouXSmK6F](#schemabatchapibax7lgouxsmk6f)|true|none|
+|body|body|[batchFFmpeXofKstUEQQNT](#schemabatchffmpexofkstueqqnt)|true|none|
 |» compute|body|string|false|none|
 |» output|body|object|false|none|
 |»» s3_bucket|body|string|false|none|
@@ -250,52 +249,6 @@ sigv4
 |200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|200 response|None|
 
 <h3 id="post__state_execute-responseschema">Response Schema</h3>
-
-<aside class="warning">
-To perform this operation, you must be authenticated by means of one of the following methods:
-sigv4
-</aside>
-
-## post__batch_execute_xilinx
-
-> Code samples
-
-`POST /batch/execute/xilinx`
-
-> Body parameter
-
-```json
-{
-  "input_file_options": "string",
-  "output_url": "string",
-  "name": "string",
-  "output_file_options": "string",
-  "global_options": "string",
-  "instance_type": "string"
-}
-```
-
-<h3 id="post__batch_execute_xilinx-parameters">Parameters</h3>
-
-|Name|In|Type|Required|Description|
-|---|---|---|---|---|
-|body|body|[batchapiba0qXhDPEBUr0E](#schemabatchapiba0qxhdpebur0e)|true|none|
-|» input_file_options|body|string|false|none|
-|» output_url|body|string|false|none|
-|» name|body|string|false|none|
-|» output_file_options|body|string|false|none|
-|» global_options|body|string|false|none|
-|» instance_type|body|string|false|none|
-
-> Example responses
-
-<h3 id="post__batch_execute_xilinx-responses">Responses</h3>
-
-|Status|Meaning|Description|Schema|
-|---|---|---|---|
-|200|[OK](https://tools.ietf.org/html/rfc7231#section-6.3.1)|200 response|None|
-
-<h3 id="post__batch_execute_xilinx-responseschema">Response Schema</h3>
 
 <aside class="warning">
 To perform this operation, you must be authenticated by means of one of the following methods:
@@ -325,7 +278,7 @@ sigv4
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[batchapiba0qXhDPEBUr0E](#schemabatchapiba0qxhdpebur0e)|true|none|
+|body|body|[batchFFmpejIWMTfpPre7F](#schemabatchffmpejiwmtfppre7f)|true|none|
 |» input_file_options|body|string|false|none|
 |» output_url|body|string|false|none|
 |» name|body|string|false|none|
@@ -366,7 +319,7 @@ sigv4
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[batchapibaQtUw4LHPXGX2](#schemabatchapibaqtuw4lhpxgx2)|true|none|
+|body|body|[batchFFmpev7PQYQAn4VdF](#schemabatchffmpev7pqyqan4vdf)|true|none|
 |» executionArn|body|string|false|none|
 
 > Example responses
@@ -407,7 +360,7 @@ sigv4
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[batchapiba0qXhDPEBUr0E](#schemabatchapiba0qxhdpebur0e)|true|none|
+|body|body|[batchFFmpejIWMTfpPre7F](#schemabatchffmpejiwmtfppre7f)|true|none|
 |» input_file_options|body|string|false|none|
 |» output_url|body|string|false|none|
 |» name|body|string|false|none|
@@ -453,7 +406,7 @@ sigv4
 
 |Name|In|Type|Required|Description|
 |---|---|---|---|---|
-|body|body|[batchapiba0qXhDPEBUr0E](#schemabatchapiba0qxhdpebur0e)|true|none|
+|body|body|[batchFFmpejIWMTfpPre7F](#schemabatchffmpejiwmtfppre7f)|true|none|
 |» input_file_options|body|string|false|none|
 |» output_url|body|string|false|none|
 |» name|body|string|false|none|
@@ -478,12 +431,12 @@ sigv4
 
 # Schemas
 
-<h2 id="tocS_batchapibaQtUw4LHPXGX2">batchapibaQtUw4LHPXGX2</h2>
+<h2 id="tocS_batchFFmpev7PQYQAn4VdF">batchFFmpev7PQYQAn4VdF</h2>
 <!-- backwards compatibility -->
-<a id="schemabatchapibaqtuw4lhpxgx2"></a>
-<a id="schema_batchapibaQtUw4LHPXGX2"></a>
-<a id="tocSbatchapibaqtuw4lhpxgx2"></a>
-<a id="tocsbatchapibaqtuw4lhpxgx2"></a>
+<a id="schemabatchffmpev7pqyqan4vdf"></a>
+<a id="schema_batchFFmpev7PQYQAn4VdF"></a>
+<a id="tocSbatchffmpev7pqyqan4vdf"></a>
+<a id="tocsbatchffmpev7pqyqan4vdf"></a>
 
 ```json
 {
@@ -500,12 +453,44 @@ sfn-describe-request-schema
 |---|---|---|---|---|
 |executionArn|string|false|none|none|
 
-<h2 id="tocS_batchapibaX7LgouXSmK6F">batchapibaX7LgouXSmK6F</h2>
+<h2 id="tocS_batchFFmpejIWMTfpPre7F">batchFFmpejIWMTfpPre7F</h2>
 <!-- backwards compatibility -->
-<a id="schemabatchapibax7lgouxsmk6f"></a>
-<a id="schema_batchapibaX7LgouXSmK6F"></a>
-<a id="tocSbatchapibax7lgouxsmk6f"></a>
-<a id="tocsbatchapibax7lgouxsmk6f"></a>
+<a id="schemabatchffmpejiwmtfppre7f"></a>
+<a id="schema_batchFFmpejIWMTfpPre7F"></a>
+<a id="tocSbatchffmpejiwmtfppre7f"></a>
+<a id="tocsbatchffmpejiwmtfppre7f"></a>
+
+```json
+{
+  "input_file_options": "string",
+  "output_url": "string",
+  "name": "string",
+  "output_file_options": "string",
+  "global_options": "string",
+  "instance_type": "string"
+}
+
+```
+
+ffmpeg-request-schema
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|input_file_options|string|false|none|none|
+|output_url|string|false|none|none|
+|name|string|false|none|none|
+|output_file_options|string|false|none|none|
+|global_options|string|false|none|none|
+|instance_type|string|false|none|none|
+
+<h2 id="tocS_batchFFmpeXofKstUEQQNT">batchFFmpeXofKstUEQQNT</h2>
+<!-- backwards compatibility -->
+<a id="schemabatchffmpexofkstueqqnt"></a>
+<a id="schema_batchFFmpeXofKstUEQQNT"></a>
+<a id="tocSbatchffmpexofkstueqqnt"></a>
+<a id="tocsbatchffmpexofkstueqqnt"></a>
 
 ```json
 {
@@ -547,12 +532,12 @@ sfn-request-schema
 |global|object|false|none|none|
 |» options|string|false|none|none|
 
-<h2 id="tocS_batchapibaJsrkUdOCalLU">batchapibaJsrkUdOCalLU</h2>
+<h2 id="tocS_batchFFmpe5uZPfvUQDlfY">batchFFmpe5uZPfvUQDlfY</h2>
 <!-- backwards compatibility -->
-<a id="schemabatchapibajsrkudocallu"></a>
-<a id="schema_batchapibaJsrkUdOCalLU"></a>
-<a id="tocSbatchapibajsrkudocallu"></a>
-<a id="tocsbatchapibajsrkudocallu"></a>
+<a id="schemabatchffmpe5uzpfvuqdlfy"></a>
+<a id="schema_batchFFmpe5uZPfvUQDlfY"></a>
+<a id="tocSbatchffmpe5uzpfvuqdlfy"></a>
+<a id="tocsbatchffmpe5uzpfvuqdlfy"></a>
 
 ```json
 {
@@ -568,35 +553,3 @@ batch-describe-request-schema
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
 |jobId|string|false|none|none|
-
-<h2 id="tocS_batchapiba0qXhDPEBUr0E">batchapiba0qXhDPEBUr0E</h2>
-<!-- backwards compatibility -->
-<a id="schemabatchapiba0qxhdpebur0e"></a>
-<a id="schema_batchapiba0qXhDPEBUr0E"></a>
-<a id="tocSbatchapiba0qxhdpebur0e"></a>
-<a id="tocsbatchapiba0qxhdpebur0e"></a>
-
-```json
-{
-  "input_file_options": "string",
-  "output_url": "string",
-  "name": "string",
-  "output_file_options": "string",
-  "global_options": "string",
-  "instance_type": "string"
-}
-
-```
-
-ffmpeg-request-schema
-
-### Properties
-
-|Name|Type|Required|Restrictions|Description|
-|---|---|---|---|---|
-|input_file_options|string|false|none|none|
-|output_url|string|false|none|none|
-|name|string|false|none|none|
-|output_file_options|string|false|none|none|
-|global_options|string|false|none|none|
-|instance_type|string|false|none|none|

@@ -1,8 +1,8 @@
-aws-cdk-lib
-aws-cdk.aws-servicecatalogappregistry-alpha
-aws-cdk.aws_glue_alpha
-boto3
-cdk-nag
-cdklabs.cdk-ssm-documents
-from-root
-pyyaml
+aws-cdk-lib==2.262.1
+aws-cdk.aws-servicecatalogappregistry-alpha==2.262.1a0
+aws-cdk.aws_glue_alpha==2.262.1a0
+boto3==1.43.57
+cdk-nag==2.38.2
+cdklabs.cdk-ssm-documents==0.0.72
+from-root==1.3.0
+pyyaml==6.0.3

@@ -1,7 +1,8 @@
-aws-xray-sdk
-boto3
-boto3[crt]
-click
-ec2-metadata
-ffmpeg_quality_metrics
-requests
+aws-requests-auth==0.4.3
+aws-xray-sdk==2.15.0
+boto3==1.43.57
+boto3[crt]==1.43.57
+click==8.4.2
+ec2-metadata==3.0.0
+ffmpeg_quality_metrics==3.12.0
+requests==2.34.2

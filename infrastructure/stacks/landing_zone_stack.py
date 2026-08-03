@@ -45,6 +45,12 @@ class LandingZoneStack(Stack):
     def create_vpc_endpoints(self) -> None:
         """Create VPC endpoints for various AWS services."""
         # Define the services that need interface endpoints
+        # The subnets are PRIVATE_ISOLATED, so every service the hosts call has
+        # to be reachable through an endpoint. The Amazon S3 Files mount helper
+        # calls three of them during a mount: the S3 Files control plane (added
+        # below, its endpoint uses the aws.api prefix), AWS STS to obtain the
+        # credentials signing the IAM authenticated NFS connection, and
+        # CloudWatch Logs, whose absence makes the mount hang with no error.
         interface_services = [
             "ecr.api",
             "ecr.dkr",
@@ -57,6 +63,7 @@ class LandingZoneStack(Stack):
             "ssm",
             "ssmmessages",
             "ec2messages",
+            "sts",
         ]
 
         # Create interface endpoints
@@ -66,7 +73,16 @@ class LandingZoneStack(Stack):
                 service=ec2.InterfaceVpcEndpointAwsService(service),
             )
 
+        # The S3 Files control plane endpoint does not follow the com.amazonaws
+        # naming convention of the other services.
+        self.vpc.add_interface_endpoint(
+            "VPCEndpointS3files",
+            service=ec2.InterfaceVpcEndpointAwsService("s3files", "aws.api"),
+        )
+
         # Create gateway endpoints
+        # The gateway endpoint is also what lets the S3 Files client read the
+        # objects directly from the bucket, its fastest read path.
         self.vpc.add_gateway_endpoint(
             "S3Endpoint",
             service=ec2.GatewayVpcEndpointAwsService.S3,

@@ -39,6 +39,8 @@ tasks:
       - rm -rf .venv || true
       - task: setup:venv
       - task: setup:install
+      - task: setup:hadolint
+      - task: setup:ash
 
   setup:venv:
     desc: Create a new virtual environment
@@ -52,7 +54,65 @@ tasks:
       - .venv/bin/python3 -m pip install --upgrade --quiet pip
       - .venv/bin/pip install --quiet -r requirements.txt
       - .venv/bin/pip install --quiet -r src/requirements.txt
-      - .venv/bin/pip install --quiet -r tests/requirements.txt || true
+      - |
+        if [ -f tests/requirements.txt ]; then
+          .venv/bin/pip install --quiet -r tests/requirements.txt
+        fi
+
+  setup:hadolint:
+    desc: Install hadolint, required by the pre-commit hook of the same name
+    cmds:
+      # The `hadolint` pre-commit hook is a system hook: it calls the binary and
+      # fails with "Executable `hadolint` not found" when it is absent, which
+      # blocks every commit. Pinned to a release rather than floating, and put in
+      # ~/.local/bin so neither sudo nor a package manager is involved.
+      - mkdir -p "$HOME/.local/bin"
+      - |
+        set -eu
+        case "$(uname -s)-$(uname -m)" in
+          Linux-x86_64)  asset=hadolint-Linux-x86_64 ;;
+          Linux-aarch64) asset=hadolint-Linux-arm64 ;;
+          Darwin-x86_64) asset=hadolint-Darwin-x86_64 ;;
+          Darwin-arm64)  asset=hadolint-Darwin-arm64 ;;
+          *)
+            echo "No hadolint release for $(uname -s)-$(uname -m). Install it from https://github.com/hadolint/hadolint#install" >&2
+            exit 1
+            ;;
+        esac
+        curl --fail --silent --show-error --location \
+          "https://github.com/hadolint/hadolint/releases/download/{{.HADOLINT_VERSION}}/$asset" \
+          --output "$HOME/.local/bin/hadolint.part"
+        chmod +x "$HOME/.local/bin/hadolint.part"
+        mv "$HOME/.local/bin/hadolint.part" "$HOME/.local/bin/hadolint"
+      - hadolint --version
+    vars:
+      # The pre-commit hook pins the tag v2.12.1-beta, which is a pre-release
+      # publishing no asset set; 2.12.0 is the release it follows, and the hook
+      # only ever calls the binary it finds on the PATH.
+      HADOLINT_VERSION: v2.12.0
+    status:
+      - command -v hadolint
+
+  setup:ash:
+    desc: Install the AWS Labs Automated Security Helper, pinned, from its source
+    cmds:
+      # Never `pip install automated-security-helper`: that name on PyPI is
+      # squatted by an unrelated placeholder package with no executable.
+      - uv tool install "git+https://github.com/awslabs/automated-security-helper.git@{{.ASH_VERSION}}"
+    vars:
+      ASH_VERSION: v3.5.8
+    preconditions:
+      - sh: command -v uv
+        msg: "uv is missing, and `uv tool install` is what keeps ASH in its own environment instead of the project venv. Install it from https://docs.astral.sh/uv/getting-started/installation/"
+    status:
+      - ash --version | grep -q "awslabs/automated-security-helper"
+
+  security:ash:
+    desc: Run the security scanners over the repository (see .ash/.ash.yaml)
+    deps:
+      - setup:ash
+    cmds:
+      - ash --source-dir . --output-dir .ash/output --mode local
 
   setup:update:
     desc: upgrade python packages in python virtual env

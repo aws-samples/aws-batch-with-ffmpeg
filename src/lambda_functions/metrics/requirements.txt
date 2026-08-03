@@ -1,2 +1,2 @@
-aws-xray-sdk
-boto3
+aws-xray-sdk==2.15.0
+boto3==1.43.57

@@ -1,12 +1,14 @@
 from aws_cdk import aws_ec2 as ec2
 from aws_cdk import aws_ecs as ecs
 
+from src.shared_libraries.s3_posix import POSIX_DIRECTORY_MODE
+
 PROCESSOR_CONFIGS = {
     "nvidia": {
         "instance_classes": [ec2.InstanceClass.G4DN],
         "additional_instances": [ec2.InstanceClass.G5],
         "excluded_regions": ["eu-west-3"],
-        "container_tag": "6.0-nvidia2004-amd64",
+        "container_tag": "7.0-nvidia2004-amd64",
         "ami_ssm_parameter": "/aws/service/ecs/optimized-ami/amazon-linux-2/gpu/recommended/image_id",
         "gpu": 1,
         "container_type": "EC2",
@@ -84,39 +86,6 @@ PROCESSOR_CONFIGS = {
         "container_type": "EC2",
         "spot": True,
     },
-    # https://github.com/Xilinx/video-sdk/issues/97
-    # "xilinx": {
-    #     "instance_types": [
-    #         ec2.InstanceType.of(ec2.InstanceClass.VT1, ec2.InstanceSize.XLARGE3)
-    #     ],
-    #     "container_tag": "4.4-xilinx2004-amd64",
-    #     "ami_ssm_parameter": "/aws/service/marketplace/prod-sw4gdej5auini/3.0.0",
-    #     "gpu": None,
-    #     "container_type": "EC2",
-    #     "spot": True,
-    #     "linux_parameters": {
-    #         "devices": [
-    #             {
-    #                 "container_path": "/sys/bus/pci/devices",
-    #                 "host_path": "/sys/bus/pci/devices",
-    #                 "permissions": [
-    #                     batch.DevicePermission.READ,
-    #                     batch.DevicePermission.WRITE,
-    #                 ],
-    #             },
-    #             {
-    #                 "container_path": "/dev/dri",
-    #                 "host_path": "/dev/dri",
-    #                 "permissions": [
-    #                     batch.DevicePermission.READ,
-    #                     batch.DevicePermission.WRITE,
-    #                 ],
-    #             },
-    #         ],
-    #     },
-    #     "environment": {"XILINX_VISIBLE_DEVICES": "0,1"},
-    #     "privileged": True,
-    # },
     "fargate": {
         "container_tag": "7.0-ubuntu2004-amd64",
         "container_type": "FARGATE",
@@ -135,8 +104,36 @@ PROCESSOR_CONFIGS = {
 JOB_DEF_CPU = 2
 JOB_DEF_MEMORY = 8192  # in MiB
 
-# FSx Lustre configurations
-LUSTRE_MOUNT_POINT = "/fsx-lustre"
+# Amazon S3 Files shared file system configuration
+S3FILES_MOUNT_POINT = "/mnt/s3files"
+# The storage stack publishes the coordinates of the file system under these
+# deterministic names, and the hosts that mount it read them at boot. The names
+# depend on no resource, which is what keeps the batch stack free of any
+# cross-stack import on the file system.
+#
+# `mount -t s3files -o accesspoint=<access point id> <file system id> <mount
+# point>` needs exactly these two values, so exactly these two are published.
+S3FILES_FILE_SYSTEM_ID_PARAMETER = "/batch-ffmpeg/s3files/file-system-id"
+S3FILES_ACCESS_POINT_ID_PARAMETER = "/batch-ffmpeg/s3files/access-point-id"
+
+# POSIX identity enforced by the access point. The containers run as
+# `useradd --uid 1000` / `USER ffmpeg` (src/docker-images/7.0/*/Dockerfile), so
+# every file system operation is attributed to that identity.
+# tests/unit/test_posix_identity.py asserts the Dockerfiles still agree with
+# these two values, which is what keeps the duplication from drifting: a
+# Dockerfile cannot read a Python constant.
+S3FILES_POSIX_UID = "1000"
+S3FILES_POSIX_GID = "1000"
+
+# Value of the `file-permissions` metadata of a directory object. The value is
+# declared by src/shared_libraries/s3_posix.py, the module that materializes
+# those directories, because that directory is the one the container images
+# embed: the containers cannot read the CDK code, so a copy here would be a
+# second source of truth for the same file system view.
+S3FILES_POSIX_DIRECTORY_MODE = POSIX_DIRECTORY_MODE
+
+# NFS port of the S3 Files mount targets.
+S3FILES_NFS_PORT = 2049
 
 # FFMPEG script configurations
 FFMPEG_SCRIPT_COMMAND = [

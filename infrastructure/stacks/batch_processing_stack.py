@@ -4,12 +4,13 @@ from aws_cdk import aws_iam as iam
 from aws_cdk import Environment
 from aws_cdk import aws_s3 as s3
 from aws_cdk import aws_ecr as ecr
-from aws_cdk import aws_fsx as fsx
 from constructs import Construct
-from typing import List, Dict, Optional
+from typing import List, Dict
 from infrastructure.constructs.batch_constructs import BatchJobConstruct
 from infrastructure.config.batch_config import (
     PROCESSOR_CONFIGS,
+    S3FILES_ACCESS_POINT_ID_PARAMETER,
+    S3FILES_FILE_SYSTEM_ID_PARAMETER,
 )
 
 
@@ -33,8 +34,8 @@ class BatchProcessingStack(Stack):
     """A stack that sets up AWS Batch resources for video processing.
 
     This stack creates compute environments, job queues, and job
-    definitions for various processor types including GPU, CPU, ARM, and
-    Xilinx instances.
+    definitions for various processor types including GPU, CPU, and ARM
+    instances.
     """
 
     @property
@@ -48,7 +49,7 @@ class BatchProcessingStack(Stack):
         vpc: ec2.IVpc,
         s3_bucket: s3.IBucket,
         ecr_repository: ecr.IRepository,
-        lustre_fs: Optional[fsx.LustreFileSystem] = None,
+        shared_fs_enabled: bool = False,
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -56,8 +57,8 @@ class BatchProcessingStack(Stack):
         self.vpc = vpc
         self.s3_bucket = s3_bucket
         self.ecr_repository = ecr_repository
-        self.lustre_fs = lustre_fs
-        self.env: Environment = kwargs.get("env")
+        self.shared_fs_enabled = shared_fs_enabled
+        self._deploy_env: Environment = kwargs.get("env")
 
         self.security_group = self.create_security_group()
         self.instance_role = self.create_instance_role()
@@ -67,6 +68,16 @@ class BatchProcessingStack(Stack):
         self._batch_jobs: Dict[str, BatchJob] = {}
         for processor_name in PROCESSOR_CONFIGS.keys():
             self._batch_jobs[processor_name] = self.create_batch_job(processor_name)
+
+        # Retain the JobDefinition cross-stack exports during migration.
+        # api-stack no longer imports these (it uses the deterministic job
+        # definition name), but a single `cdk deploy --all` deploys this
+        # producer stack before api-stack; without retaining the exports,
+        # CloudFormation refuses to delete them while the still-deployed
+        # api-stack imports them ("Cannot delete export ... in use").
+        # TODO: remove once all environments have been redeployed decoupled.
+        for job in self._batch_jobs.values():
+            self.export_value(job.job_definition.job_definition_arn)
 
     def create_security_group(self) -> ec2.SecurityGroup:
         return ec2.SecurityGroup(
@@ -94,6 +105,56 @@ class BatchProcessingStack(Stack):
                     "AWSXrayWriteOnlyAccess"
                 ),
             ],
+            inline_policies={
+                # The user data of the compute environment hosts resolves the
+                # coordinates of the Amazon S3 Files file system from these two
+                # parameters at boot. The ARNs are built from the deterministic
+                # parameter names rather than from the StringParameter objects:
+                # those live in the storage stack and referencing them would
+                # recreate the cross-stack import this decoupling removes.
+                "get-s3files-parameters": iam.PolicyDocument(
+                    statements=[
+                        iam.PolicyStatement(
+                            actions=["ssm:GetParameter"],
+                            resources=[
+                                self.format_arn(
+                                    service="ssm",
+                                    resource="parameter",
+                                    resource_name=parameter_name.lstrip("/"),
+                                )
+                                for parameter_name in (
+                                    S3FILES_FILE_SYSTEM_ID_PARAMETER,
+                                    S3FILES_ACCESS_POINT_ID_PARAMETER,
+                                )
+                            ],
+                        )
+                    ]
+                ),
+                # Client permissions of the mount helper. The file system is
+                # created in the storage stack and naming it here would import
+                # its identifier, so the resource stays a wildcard scoped to
+                # this account and Region; the file system policy is what
+                # restricts the mount to the access point. ClientRootAccess is
+                # deliberately not granted: the access point enforces the POSIX
+                # identity of the containers.
+                "mount-s3files": iam.PolicyDocument(
+                    statements=[
+                        iam.PolicyStatement(
+                            actions=[
+                                "s3files:ClientMount",
+                                "s3files:ClientWrite",
+                            ],
+                            resources=[
+                                self.format_arn(
+                                    service="s3files",
+                                    resource="file-system",
+                                    resource_name="*",
+                                )
+                            ],
+                        )
+                    ]
+                ),
+            },
         )
         self.s3_bucket.grant_read_write(role)
         return role
@@ -122,13 +183,11 @@ class BatchProcessingStack(Stack):
                                 "ssm:GetParameters",
                                 "ssm:GetParameter",
                                 "ssm:GetParametersByPath",
-                                "secretsmanager:GetSecretValue",
-                                "kms:Decrypt",
                             ],
                             resources=[
-                                f"arn:aws:ssm:{self.env.region}:{self.env.account}"
+                                f"arn:aws:ssm:{self._deploy_env.region}:{self._deploy_env.account}"
                                 f":parameter/batch-ffmpeg/*",
-                                f"arn:aws:ssm:{self.env.region}:{self.env.account}"
+                                f"arn:aws:ssm:{self._deploy_env.region}:{self._deploy_env.account}"
                                 f":parameter/batch-ffmpeg",
                             ],
                         )
@@ -169,8 +228,8 @@ class BatchProcessingStack(Stack):
             instance_role=self.instance_role,
             execution_role=self.execution_role,
             job_role=self.job_role,
-            lustre_fs=self.lustre_fs,
-            env=self.env,
+            shared_fs_enabled=self.shared_fs_enabled,
+            env=self._deploy_env,
         )
 
         return BatchJob(

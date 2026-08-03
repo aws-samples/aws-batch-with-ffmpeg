@@ -9,6 +9,7 @@ from aws_cdk import aws_iam as iam
 from aws_cdk import aws_lambda as lmb
 from aws_cdk import aws_s3 as s3
 from aws_cdk import aws_ssm as ssm
+from aws_cdk import aws_logs as logs
 from constructs import Construct
 from aws_cdk.aws_logs import RetentionDays
 from from_root import from_root
@@ -72,7 +73,12 @@ class MetricsStack(Stack):
             },
             retry_attempts=2,
             role=self.lambda_role,
-            log_retention=RetentionDays.ONE_WEEK,
+            log_group=logs.LogGroup(
+                self,
+                "MetricsExportLogGroup",
+                retention=RetentionDays.ONE_WEEK,
+                removal_policy=cdk.RemovalPolicy.DESTROY,
+            ),
         )
 
         self.s3_bucket.grant_read_write(function)

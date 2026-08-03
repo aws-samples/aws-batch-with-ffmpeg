@@ -28,13 +28,21 @@ import boto3
 
 # Constants
 LOGLEVEL: str = os.environ.get("LOGLEVEL", "INFO").upper()
-S3_BUCKET: str = os.environ.get("S3_BUCKET", "gma-test")
-ATHENA_RESULT_LOCATION: str = f"s3://{S3_BUCKET}/athena/queries/"
 CRAWLER_NAME: str = "batch_ffmpeg_crawler"
 MAX_WORKERS: int = 10  # Adjust based on your Lambda function's resources
 
+
+def get_s3_bucket() -> str:
+    """Return the target S3 bucket, failing loudly if the env var is unset.
+
+    Reading the variable lazily (rather than at import time) keeps the module
+    importable for test collection while still raising a clear ``KeyError`` at
+    runtime when ``S3_BUCKET`` is missing.
+    """
+    return os.environ["S3_BUCKET"]
+
+
 # Setup logging
-LOGLEVEL = os.environ.get("LOGLEVEL", "INFO").upper()
 logging.basicConfig(level=LOGLEVEL)
 logger = logging.getLogger()
 logger.setLevel(LOGLEVEL)
@@ -112,7 +120,7 @@ def save_segment(trace: Dict[str, Any]) -> None:
 
         # Generate S3 key and save the document
         key: str = f"metrics/xray/{get_hive_partition()}/xray_segment_{document['segment_id']}.json"
-        s3.put_object(Bucket=S3_BUCKET, Key=key, Body=json.dumps(document))
+        s3.put_object(Bucket=get_s3_bucket(), Key=key, Body=json.dumps(document))
 
 
 def process_trace_batch(batch: Dict[str, Any]) -> None:
@@ -180,7 +188,9 @@ def run_athena_query(query: str) -> None:
     """
     response: Dict[str, Any] = athena.start_query_execution(
         QueryString=query,
-        ResultConfiguration={"OutputLocation": ATHENA_RESULT_LOCATION},
+        ResultConfiguration={
+            "OutputLocation": f"s3://{get_s3_bucket()}/athena/queries/"
+        },
     )
     query_execution_id: str = response["QueryExecutionId"]
 

@@ -70,7 +70,7 @@ def create_stacks(app: cdk.App, env: Environment) -> Dict[str, cdk.Stack]:
         vpc=stacks["landing_zone"].vpc,
         s3_bucket=stacks["storage"].s3_bucket,
         ecr_repository=stacks["storage"].ecr_repository,
-        lustre_fs=stacks["storage"].lustre_fs,
+        shared_fs_enabled=stacks["storage"].s3files_file_system is not None,
         env=env,
         description="AWS Batch with FFmpeg: Main stack (uksb-1tg6b0m8t)",
     )
@@ -118,7 +118,7 @@ def create_app_registry(
     """
     application = appreg.ApplicationAssociator(
         app,
-        "batch-ffmepg-app",
+        "batch-ffmpeg-app",
         applications=[
             appreg.TargetApplication.create_application_stack(
                 application_name="batch-ffmpeg",
@@ -136,9 +136,11 @@ def create_app_registry(
 def add_cdk_nag(app: cdk.App, env: Environment) -> None:
     """Add CDK NAG checks and suppressions.
 
-    Args:
-        app (cdk.App): The CDK application.
-        env (Environment): The AWS environment.
+    Note: cdk-nag is pinned to the latest 2.x line. cdk-nag v3 rewrote the
+    engine onto CDK's ``Validations`` policy-validation framework, but that
+    framework rejects acknowledgement IDs containing ``::`` — which every
+    granular IAM4/IAM5 finding ID contains (e.g. ``Action::s3:List*``) — making
+    those findings impossible to suppress. See docs/adr for details.
     """
     cdk_nag.NagSuppressions.add_resource_suppressions(
         app,
@@ -152,7 +154,6 @@ def add_cdk_nag(app: cdk.App, env: Environment) -> None:
                     "Policy::arn:<AWS::Partition>:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
                     "Policy::arn:<AWS::Partition>:iam::aws:policy/service-role/AWSBatchServiceRole",
                     "Policy::arn:<AWS::Partition>:iam::aws:policy/AWSXrayWriteOnlyAccess",
-                    "Policy::arn:<AWS::Partition>:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs",
                     "Policy::arn:<AWS::Partition>:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy",
                     "Policy::arn:<AWS::Partition>:iam::aws:policy/service-role/AWSGlueServiceRole",
                     "Policy::arn:<AWS::Partition>:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role",
@@ -184,8 +185,38 @@ def add_cdk_nag(app: cdk.App, env: Environment) -> None:
                     "Resource::*",
                 ],
             ),
+            cdk_nag.NagPackSuppression(
+                id="AwsSolutions-IAM5",
+                reason="Amazon S3 Files data synchronization and client mount. The "
+                "wildcard S3 actions are the policy documented for the file "
+                "system role (https://docs.aws.amazon.com/AmazonS3/latest/"
+                "userguide/s3-files-file-systems-creating.html); the EventBridge "
+                "rules are created and named by the service itself; the file "
+                "system resource stays a wildcard because naming it in the batch "
+                "stack would import it from the storage stack, which forbids "
+                "CloudFormation from ever replacing the file system.",
+                applies_to=[
+                    "Action::s3:ListBucket*",
+                    "Action::s3:PutObject*",
+                    "Resource::arn:<AWS::Partition>:events:*:*:rule/DO-NOT-DELETE-S3-Files*",
+                    "Resource::arn:<AWS::Partition>:events:*:*:rule/*",
+                    f"Resource::arn:<AWS::Partition>:s3files:{env.region}:{env.account}:file-system/*",
+                ],
+            ),
             {"id": "AwsSolutions-COG4", "reason": "API Gateway secured by IAM"},
-            {"id": "AwsSolutions-S1", "reason": "Regression in Sidney"},
+            {"id": "AwsSolutions-S1", "reason": "Sample data bucket"},
+            {
+                "id": "CdkNagValidationFailure",
+                "reason": "AwsSolutions-EC23 cannot validate security group rules "
+                "that reference the VPC CIDR through a CloudFormation intrinsic "
+                "(Fn::GetAtt on the VPC CidrBlock).",
+            },
+            {
+                "id": "AwsSolutions-L1",
+                "reason": "The metrics Lambda uses python3.13, a current and "
+                "supported runtime. python3.14 is not GA on AWS Lambda in all "
+                "regions, so we do not force it to keep deployments portable.",
+            },
         ],
     )
     Aspects.of(app).add(

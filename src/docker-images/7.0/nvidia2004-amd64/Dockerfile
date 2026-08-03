@@ -10,7 +10,7 @@
 #
 
 # Development
-FROM        nvidia/cuda:12.5.0-devel-ubuntu20.04 AS devel-base
+FROM        nvidia/cuda:12.5.0-devel-ubuntu22.04 AS devel-base
 
 ENV	    NVIDIA_DRIVER_CAPABILITIES compute,utility,video
 ENV	    DEBIAN_FRONTEND=noninteractive
@@ -18,7 +18,7 @@ WORKDIR     /tmp/workdir
 
 RUN     apt-get -yqq update && \
         apt-get -yqq upgrade && \
-        apt-get install -yqq --no-install-recommends ca-certificates expat libgomp1 software-properties-common libxcb-shape0-dev && \
+        apt-get install -yqq --no-install-recommends ca-certificates expat libgomp1 software-properties-common libxcb-shape0-dev gnupg dirmngr && \
         apt-get autoremove -y && \
         apt-get clean -y && \
         rm -rf /var/lib/apt/lists/*
@@ -26,16 +26,17 @@ RUN     apt-get -yqq update && \
 # Install Python 3
 ARG PYTHON_VERSION=3.11
 RUN add-apt-repository ppa:deadsnakes/ppa -y \
-    && apt-get install -yqq --fix-missing --no-install-recommends curl python${PYTHON_VERSION} python${PYTHON_VERSION}-dev python${PYTHON_VERSION}-distutils python${PYTHON_VERSION}-venv python-is-python3 \
+    && apt-get update \
+    && apt-get install -yqq --fix-missing --no-install-recommends curl python${PYTHON_VERSION} python${PYTHON_VERSION}-dev python${PYTHON_VERSION}-venv python-is-python3 \
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/* \
-    && curl -sS https://bootstrap.pypa.io/get-pip.py | python${PYTHON_VERSION} \
+    && python${PYTHON_VERSION} -m ensurepip --upgrade \
     && python${PYTHON_VERSION} -m pip install --quiet --no-cache-dir --upgrade pip \
     && update-alternatives --install /usr/bin/python python /usr/bin/python${PYTHON_VERSION} 1 \
     && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1
 
 # Runtime
-FROM        nvidia/cuda:12.5.0-runtime-ubuntu20.04 AS runtime-base
+FROM        nvidia/cuda:12.5.0-runtime-ubuntu22.04 AS runtime-base
 
 ENV	    NVIDIA_DRIVER_CAPABILITIES compute,utility,video
 ENV	    DEBIAN_FRONTEND=noninteractive
@@ -43,7 +44,7 @@ WORKDIR     /tmp/workdir
 
 RUN     apt-get -yqq update && \
         apt-get -yqq upgrade && \
-        apt-get install -yqq --no-install-recommends ca-certificates expat libgomp1 software-properties-common libxcb-shape0-dev && \
+        apt-get install -yqq --no-install-recommends ca-certificates expat libgomp1 software-properties-common libxcb-shape0-dev gnupg dirmngr && \
         apt-get autoremove -y && \
         apt-get clean -y && \
         rm -rf /var/lib/apt/lists/*
@@ -51,10 +52,11 @@ RUN     apt-get -yqq update && \
 # Install Python 3
 ARG PYTHON_VERSION=3.11
 RUN add-apt-repository ppa:deadsnakes/ppa -y \
-    && apt-get install -yqq --fix-missing --no-install-recommends curl python${PYTHON_VERSION} python${PYTHON_VERSION}-dev python${PYTHON_VERSION}-distutils python${PYTHON_VERSION}-venv python-is-python3 \
+    && apt-get update \
+    && apt-get install -yqq --fix-missing --no-install-recommends curl python${PYTHON_VERSION} python${PYTHON_VERSION}-dev python${PYTHON_VERSION}-venv python-is-python3 \
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/* \
-    && curl -sS https://bootstrap.pypa.io/get-pip.py | python${PYTHON_VERSION} \
+    && python${PYTHON_VERSION} -m ensurepip --upgrade \
     && python${PYTHON_VERSION} -m pip install --quiet --no-cache-dir --upgrade pip \
     && update-alternatives --install /usr/bin/python python /usr/bin/python${PYTHON_VERSION} 1 \
     && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1
@@ -62,7 +64,7 @@ RUN add-apt-repository ppa:deadsnakes/ppa -y \
 # Build
 FROM devel-base as build
 
-ENV     FFMPEG_VERSION=snapshot \
+ENV     FFMPEG_VERSION=7.1.5 \
         NVIDIA_HEADERS_VERSION=12.2.72.0 \
         AOM_VERSION=3.7.0 \
         FDKAAC_VERSION=2.0.2 \
@@ -123,11 +125,15 @@ RUN      buildDeps="autoconf \
         pip3 install --quiet --no-cache-dir meson
 
 RUN echo "## https://docs.nvidia.com/video-technologies/video-codec-sdk/12.1/ffmpeg-with-nvidia-gpu/index.html#compiling-for-linux"
+# A full clone of nv-codec-headers over HTTP/2 fails from the GitLab runners with
+# "RPC failed; curl 92 HTTP/2 stream 0 was not closed cleanly: INTERNAL_ERROR".
+# Pinning HTTP/1.1 and fetching only the pinned tag avoids it.
 RUN \
         DIR=/tmp/nv-codec-headers && \
-        git clone https://git.videolan.org/git/ffmpeg/nv-codec-headers.git ${DIR} && \
+        git -c http.version=HTTP/1.1 clone --quiet --depth 1 \
+        --branch n${NVIDIA_HEADERS_VERSION} \
+        https://git.videolan.org/git/ffmpeg/nv-codec-headers.git ${DIR} && \
         cd ${DIR} && \
-        git checkout n${NVIDIA_HEADERS_VERSION} && \
         make PREFIX="${PREFIX}" && \
         make install PREFIX="${PREFIX}" && \
         rm -rf ${DIR}
@@ -136,7 +142,7 @@ RUN \
         DIR=/tmp/vmaf && \
         mkdir -p ${DIR} && \
         cd ${DIR} && \
-        curl -sLO https://github.com/Netflix/vmaf/archive/v${LIBVMAF_VERSION}.tar.gz && \
+        curl -fsSLO https://github.com/Netflix/vmaf/archive/v${LIBVMAF_VERSION}.tar.gz && \
         tar -xz --strip-components=1 -f v${LIBVMAF_VERSION}.tar.gz && \
         cd /tmp/vmaf/libvmaf && \
         meson build --buildtype release --prefix=${PREFIX} && \
@@ -150,7 +156,7 @@ RUN \
         DIR=/tmp/opencore-amr && \
         mkdir -p ${DIR} && \
         cd ${DIR} && \
-        curl -sL https://sourceforge.net/projects/opencore-amr/files/opencore-amr/opencore-amr-${OPENCOREAMR_VERSION}.tar.gz/download | \
+        curl -fsSL https://sourceforge.net/projects/opencore-amr/files/opencore-amr/opencore-amr-${OPENCOREAMR_VERSION}.tar.gz/download | \
         tar -zx --strip-components=1 && \
         ./configure --prefix="${PREFIX}" --enable-shared  && \
         make && \
@@ -166,25 +172,29 @@ RUN \
         make && \
         make install && \
         rm -rf ${DIR}
+# The x265 assembler emits tens of thousands of warnings, enough on its own to
+# reach the 4 MB GitLab job log limit and truncate away the failure message of
+# any later step. Keep that output in a file and print its tail only on failure.
 RUN echo "## x265 http://x265.org/"
 RUN \
         DIR=/tmp/x265 && \
         mkdir -p ${DIR} && \
         cd ${DIR} && \
-        curl -sL https://github.com/videolan/x265/archive/refs/tags/${X265_VERSION}.tar.gz | \
+        curl -fsSL https://github.com/videolan/x265/archive/refs/tags/${X265_VERSION}.tar.gz | \
         tar -zx && \
         cd x265-${X265_VERSION}/build/linux && \
         sed -i "/-DEXTRA_LIB/ s/$/ -DCMAKE_INSTALL_PREFIX=\${PREFIX}/" multilib.sh && \
         sed -i "/^cmake/ s/$/ -DENABLE_CLI=OFF/" multilib.sh && \
-        ./multilib.sh && \
-        make -C 8bit install && \
-        rm -rf ${DIR}
+        { { ./multilib.sh && make -C 8bit install; } > /tmp/x265-build.log 2>&1 || \
+        { echo "x265 build failed, last 80 lines of /tmp/x265-build.log:" >&2; \
+        tail -n 80 /tmp/x265-build.log >&2; exit 1; }; } && \
+        rm -rf ${DIR} /tmp/x265-build.log
 RUN echo "## libogg https://www.xiph.org/ogg/"
 RUN \
         DIR=/tmp/ogg && \
         mkdir -p ${DIR} && \
         cd ${DIR} && \
-        curl -sLO http://downloads.xiph.org/releases/ogg/libogg-${OGG_VERSION}.tar.gz && \
+        curl -fsSLO http://downloads.xiph.org/releases/ogg/libogg-${OGG_VERSION}.tar.gz && \
         tar -zx --strip-components=1 -f libogg-${OGG_VERSION}.tar.gz && \
         ./configure --prefix="${PREFIX}" --enable-shared  && \
         make && \
@@ -195,7 +205,7 @@ RUN \
         DIR=/tmp/opus && \
         mkdir -p ${DIR} && \
         cd ${DIR} && \
-        curl -sLO https://downloads.xiph.org/releases/opus/opus-${OPUS_VERSION}.tar.gz && \
+        curl -fsSLO https://downloads.xiph.org/releases/opus/opus-${OPUS_VERSION}.tar.gz && \
         tar -zx --strip-components=1 -f opus-${OPUS_VERSION}.tar.gz && \
         autoreconf -fiv && \
         ./configure --prefix="${PREFIX}" --enable-shared && \
@@ -207,7 +217,7 @@ RUN \
         DIR=/tmp/vorbis && \
         mkdir -p ${DIR} && \
         cd ${DIR} && \
-        curl -sLO http://downloads.xiph.org/releases/vorbis/libvorbis-${VORBIS_VERSION}.tar.gz && \
+        curl -fsSLO http://downloads.xiph.org/releases/vorbis/libvorbis-${VORBIS_VERSION}.tar.gz && \
         tar -zx --strip-components=1 -f libvorbis-${VORBIS_VERSION}.tar.gz && \
         ./configure --prefix="${PREFIX}" --with-ogg="${PREFIX}" --enable-shared && \
         make && \
@@ -218,7 +228,7 @@ RUN \
         DIR=/tmp/theora && \
         mkdir -p ${DIR} && \
         cd ${DIR} && \
-        curl -sLO http://downloads.xiph.org/releases/theora/libtheora-${THEORA_VERSION}.tar.gz && \
+        curl -fsSLO http://downloads.xiph.org/releases/theora/libtheora-${THEORA_VERSION}.tar.gz && \
         tar -zx --strip-components=1 -f libtheora-${THEORA_VERSION}.tar.gz && \
         ./configure --prefix="${PREFIX}" --with-ogg="${PREFIX}" --enable-shared && \
         make && \
@@ -229,7 +239,7 @@ RUN \
         DIR=/tmp/vpx && \
         mkdir -p ${DIR} && \
         cd ${DIR} && \
-        curl -sL https://codeload.github.com/webmproject/libvpx/tar.gz/v${VPX_VERSION} | \
+        curl -fsSL https://codeload.github.com/webmproject/libvpx/tar.gz/v${VPX_VERSION} | \
         tar -zx --strip-components=1 && \
         ./configure --prefix="${PREFIX}" --enable-vp8 --enable-vp9 --enable-vp9-highbitdepth --enable-pic --enable-shared \
         --disable-debug --disable-examples --disable-docs --disable-install-bins && \
@@ -241,7 +251,7 @@ RUN \
         DIR=/tmp/vebp && \
         mkdir -p ${DIR} && \
         cd ${DIR} && \
-        curl -sL https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-${WEBP_VERSION}.tar.gz | \
+        curl -fsSL https://storage.googleapis.com/downloads.webmproject.org/releases/webp/libwebp-${WEBP_VERSION}.tar.gz | \
         tar -zx --strip-components=1 && \
         ./configure --prefix="${PREFIX}" --enable-shared  && \
         make && \
@@ -252,7 +262,7 @@ RUN \
         DIR=/tmp/lame && \
         mkdir -p ${DIR} && \
         cd ${DIR} && \
-        curl -sL https://sourceforge.net/projects/lame/files/lame/${LAME_VERSION}/lame-${LAME_VERSION}.tar.gz/download | \
+        curl -fsSL https://sourceforge.net/projects/lame/files/lame/${LAME_VERSION}/lame-${LAME_VERSION}.tar.gz/download | \
         tar -zx --strip-components=1 && \
         ./configure --prefix="${PREFIX}" --bindir="${PREFIX}/bin" --enable-shared --enable-nasm --disable-frontend && \
         make && \
@@ -263,7 +273,7 @@ RUN \
         DIR=/tmp/xvid && \
         mkdir -p ${DIR} && \
         cd ${DIR} && \
-        curl -sLO https://downloads.xvid.com/downloads/xvidcore-${XVID_VERSION}.tar.gz && \
+        curl -fsSLO https://downloads.xvid.com/downloads/xvidcore-${XVID_VERSION}.tar.gz && \
         ls -al xvidcore-${XVID_VERSION}.tar.gz && \
         tar -zvx -f xvidcore-${XVID_VERSION}.tar.gz && \
         cd xvidcore/build/generic && \
@@ -276,7 +286,7 @@ RUN \
         DIR=/tmp/fdk-aac && \
         mkdir -p ${DIR} && \
         cd ${DIR} && \
-        curl -sL https://github.com/mstorsjo/fdk-aac/archive/v${FDKAAC_VERSION}.tar.gz | \
+        curl -fsSL https://github.com/mstorsjo/fdk-aac/archive/v${FDKAAC_VERSION}.tar.gz | \
         tar -zx --strip-components=1 && \
         autoreconf -fiv && \
         ./configure --prefix="${PREFIX}" --enable-shared --datadir="${DIR}" && \
@@ -288,7 +298,7 @@ RUN \
         DIR=/tmp/openjpeg && \
         mkdir -p ${DIR} && \
         cd ${DIR} && \
-        curl -sL https://github.com/uclouvain/openjpeg/archive/refs/tags/v${OPENJPEG_VERSION}.tar.gz | \
+        curl -fsSL https://github.com/uclouvain/openjpeg/archive/refs/tags/v${OPENJPEG_VERSION}.tar.gz | \
         tar -zx --strip-components=1 && \
         cmake -DBUILD_THIRDPARTY:BOOL=ON -DCMAKE_INSTALL_PREFIX="${PREFIX}" . && \
         make && \
@@ -299,7 +309,7 @@ RUN  \
         DIR=/tmp/freetype && \
         mkdir -p ${DIR} && \
         cd ${DIR} && \
-        curl -sLO https://download.savannah.gnu.org/releases/freetype/freetype-${FREETYPE_VERSION}.tar.gz && \
+        curl -fsSLO https://download-mirror.savannah.gnu.org/releases/freetype/freetype-${FREETYPE_VERSION}.tar.gz && \
         tar -zx --strip-components=1 -f freetype-${FREETYPE_VERSION}.tar.gz && \
         ./configure --prefix="${PREFIX}" --disable-static --enable-shared && \
         make && \
@@ -310,7 +320,7 @@ RUN  \
         DIR=/tmp/harfbuzz && \
         mkdir -p ${DIR} && \
         cd ${DIR} && \
-        curl -sLO https://github.com/harfbuzz/harfbuzz/releases/download/${HARFBUZZ_VERSION}/harfbuzz-${HARFBUZZ_VERSION}.tar.xz && \
+        curl -fsSLO https://github.com/harfbuzz/harfbuzz/releases/download/${HARFBUZZ_VERSION}/harfbuzz-${HARFBUZZ_VERSION}.tar.xz && \
         tar -xf harfbuzz-${HARFBUZZ_VERSION}.tar.xz && \
         cd harfbuzz-${HARFBUZZ_VERSION} && \
         meson build --buildtype=release --prefix=${PREFIX} && \
@@ -323,7 +333,7 @@ RUN  \
         DIR=/tmp/fribidi && \
         mkdir -p ${DIR} && \
         cd ${DIR} && \
-        curl -sLO https://github.com/fribidi/fribidi/archive/${FRIBIDI_VERSION}.tar.gz && \
+        curl -fsSLO https://github.com/fribidi/fribidi/archive/${FRIBIDI_VERSION}.tar.gz && \
         tar -zx --strip-components=1 -f ${FRIBIDI_VERSION}.tar.gz && \
         sed -i 's/^SUBDIRS =.*/SUBDIRS=gen.tab charset lib bin/' Makefile.am && \
         ./bootstrap --no-config --auto && \
@@ -336,7 +346,7 @@ RUN  \
         DIR=/tmp/fontconfig && \
         mkdir -p ${DIR} && \
         cd ${DIR} && \
-        curl -sLO https://www.freedesktop.org/software/fontconfig/release/fontconfig-${FONTCONFIG_VERSION}.tar.gz && \
+        curl -fsSLO https://www.freedesktop.org/software/fontconfig/release/fontconfig-${FONTCONFIG_VERSION}.tar.gz && \
         tar -zx --strip-components=1 -f fontconfig-${FONTCONFIG_VERSION}.tar.gz && \
         ./configure --prefix="${PREFIX}" --disable-static --enable-shared --build=aarch64-unknown-linux-gnu && \
         make && \
@@ -347,7 +357,7 @@ RUN  \
         DIR=/tmp/libass && \
         mkdir -p ${DIR} && \
         cd ${DIR} && \
-        curl -sLO https://github.com/libass/libass/releases/download/${LIBASS_VERSION}/libass-${LIBASS_VERSION}.tar.gz && \
+        curl -fsSLO https://github.com/libass/libass/releases/download/${LIBASS_VERSION}/libass-${LIBASS_VERSION}.tar.gz && \
         tar -zx --strip-components=1 -f libass-${LIBASS_VERSION}.tar.gz && \
         ./configure --prefix="${PREFIX}" --disable-static --enable-shared && \
         make && \
@@ -358,7 +368,7 @@ RUN \
         DIR=/tmp/kvazaar && \
         mkdir -p ${DIR} && \
         cd ${DIR} && \
-        curl -sLO https://github.com/ultravideo/kvazaar/archive/v${KVAZAAR_VERSION}.tar.gz && \
+        curl -fsSLO https://github.com/ultravideo/kvazaar/archive/v${KVAZAAR_VERSION}.tar.gz && \
         tar -zx --strip-components=1 -f v${KVAZAAR_VERSION}.tar.gz && \
         ./autogen.sh && \
         ./configure --prefix="${PREFIX}" --disable-static --enable-shared && \
@@ -393,7 +403,7 @@ RUN \
         DIR=/tmp/b24 && \
         mkdir -p ${DIR} && \
         cd ${DIR} && \
-        curl -sLO https://github.com/nkoriyama/aribb24/archive/v${LIBARIBB24_VERSION}.tar.gz && \
+        curl -fsSLO https://github.com/nkoriyama/aribb24/archive/v${LIBARIBB24_VERSION}.tar.gz && \
         tar -xz --strip-components=1 -f v${LIBARIBB24_VERSION}.tar.gz && \
         autoreconf -fiv && \
         ./configure CFLAGS="-I${PREFIX}/include -fPIC" --prefix="${PREFIX}" && \
@@ -403,8 +413,8 @@ RUN \
 RUN echo "## Download ffmpeg https://ffmpeg.org/"
 RUN  \
         DIR=/tmp/ffmpeg && mkdir -p ${DIR} && cd ${DIR} && \
-        curl -sLO https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.bz2 && \
-        tar -jx --strip-components=1 -f ffmpeg-${FFMPEG_VERSION}.tar.bz2 && \
+        curl -fsSL --retry 3 --retry-delay 5 --retry-connrefused --connect-timeout 20 -o ffmpeg-${FFMPEG_VERSION}.tar.gz https://codeload.github.com/FFmpeg/FFmpeg/tar.gz/n${FFMPEG_VERSION} && \
+        tar -zx --strip-components=1 -f ffmpeg-${FFMPEG_VERSION}.tar.gz && \
         ./configure \
         --disable-debug \
         --disable-doc \
@@ -491,6 +501,12 @@ RUN mkdir -p /usr/share/fonts/truetype/ && \
         fc-cache -fv
 
 RUN pip3 install --quiet --no-cache-dir -r requirements.txt
+
+# Run as non-root user (security hardening)
+RUN groupadd --system --gid 1000 ffmpeg \
+    && useradd --system --uid 1000 --gid 1000 --create-home --home-dir /home/ffmpeg ffmpeg \
+    && chown -R ffmpeg:ffmpeg /opt/aws-batch-ffmpeg
+USER ffmpeg
 
 CMD ["--help"]
 ENTRYPOINT  ["python3", "wrapper.py"]

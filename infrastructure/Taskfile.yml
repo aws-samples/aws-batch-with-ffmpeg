@@ -10,6 +10,12 @@ tasks:
     cmds:
       - "{{.CDK}} synth"
 
+  synth-shared-fs:
+    desc: Synthesize the CDK app with the Amazon S3 Files shared file system enabled (same context as deploy)
+    deps: [build-lambda]
+    cmds:
+      - "{{.CDK}} synth --context batch-ffmpeg:shared-fs:enable=true"
+
   diff:
     desc: Show difference between current state and CDK app
     cmds:
@@ -19,7 +25,7 @@ tasks:
     desc: Deploy the CDK app
     deps: [build-lambda]
     cmds:
-      - "{{.CDK}} deploy --all --require-approval never --context batch-ffmpeg:lustre-fs:enable=true"
+      - "{{.CDK}} deploy --all --require-approval never --context batch-ffmpeg:shared-fs:enable=true"
 
   destroy:
     desc: Destroy the CDK app

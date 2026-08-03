@@ -2,6 +2,10 @@
 
 Date: 2023-11-29
 
+## Status
+
+Superseded by [6. Replace FSx for Lustre with Amazon S3 Files](0006-replace-fsx-lustre-with-amazon-s3-files.md)
+
 ## Context
 
 When processing large media assets, it is preferable to avoid wasting compute time on uploading and downloading media to local storage. Rather, a shared file system where the media already resides is ideal.

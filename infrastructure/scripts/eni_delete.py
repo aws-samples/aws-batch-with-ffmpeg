@@ -9,7 +9,6 @@ logging.basicConfig(level=LOGLEVEL)
 logging.info("Deleting all Network Interfaces")
 
 ec2 = boto3.client("ec2")
-fsx = boto3.client("fsx")
 
 tag_key = "application"
 tag_value = "batch-ffmpeg"
@@ -24,36 +23,9 @@ if len(response["Vpcs"]) == 0:
 vpc_id = response["Vpcs"][0]["VpcId"]
 logging.info(f"Found VPC {vpc_id}")
 
-# First, delete any FSx for Lustre file systems
-try:
-    fsx_response = fsx.describe_file_systems()
-    for fs in fsx_response.get("FileSystems", []):
-        if any(
-            tag.get("Key") == tag_key and tag.get("Value") == tag_value
-            for tag in fs.get("Tags", [])
-        ):
-            fs_id = fs["FileSystemId"]
-            logging.info(f"Found FSx file system: {fs_id}")
-            try:
-                fsx.delete_file_system(FileSystemId=fs_id)
-                logging.info(f"Initiated deletion of FSx file system: {fs_id}")
-
-                # Wait for the file system to be deleted
-                while True:
-                    try:
-                        fsx.describe_file_systems(FileSystemIds=[fs_id])
-                        logging.info(
-                            f"Waiting for FSx file system {fs_id} to be deleted..."
-                        )
-                        time.sleep(30)
-                    except fsx.exceptions.FileSystemNotFound:
-                        logging.info(f"FSx file system {fs_id} has been deleted")
-                        break
-            except Exception as e:
-                logging.error(f"Error deleting FSx file system {fs_id}: {e}")
-except Exception as e:
-    logging.error(f"Error describing FSx file systems: {e}")
-
+# The Amazon S3 Files mount targets own network interfaces too, but
+# CloudFormation deletes them with the storage stack, which `cdk destroy --all`
+# tears down before the VPC of the landing zone stack: no pre-cleanup needed.
 # Now handle the network interfaces
 response = ec2.describe_network_interfaces(
     Filters=[

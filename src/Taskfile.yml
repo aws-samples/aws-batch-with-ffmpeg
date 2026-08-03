@@ -58,12 +58,6 @@ tasks:
       - task: docker:build
         vars: { VARIANT: ubuntu2004-arm64, VERSION: "7.0", ARCH: linux/arm64 }
 
-  docker:build:xilinx:
-    desc: Build Container image for Xilinx
-    cmds:
-      - task: docker:build
-        vars: { VARIANT: xilinx2004-amd64, VERSION: "4.4", ARCH: linux/amd64 }
-
   lambda:invoke-local:
     desc: Invoke Lambda function locally
     cmds:
@@ -88,6 +82,3 @@ tasks:
       - task: docker:build:arm64
       - task: docker:push
         vars: { VARIANT: ubuntu2004-arm64, VERSION: "7.0", ARCH: linux/arm64 }
-      #- task: docker:build:xilinx
-      #- task: docker:push
-      #  vars: { VARIANT: xilinx2004-amd64, VERSION: "4.4", ARCH: linux/amd64 }

@@ -15,9 +15,11 @@ _Blog post : <https://aws.amazon.com/blogs/opensource/create-a-managed-ffmpeg-wo
   - [Install](#install)
     - [Prerequisites](#prerequisites)
   - [Deploy the solution with AWS CDK](#deploy-the-solution-with-aws-cdk)
+    - [Troubleshooting the deployment](#troubleshooting-the-deployment)
   - [Use the solution](#use-the-solution)
+    - [Multiple input files](#multiple-input-files)
     - [Use the solution at scale with AWS Step Functions](#use-the-solution-at-scale-with-aws-step-functions)
-    - [Use the solution with Amazon FSx for Lustre cluster](#use-the-solution-with-amazon-fsx-for-lustre-cluster)
+    - [Use the solution with an Amazon S3 Files shared file system](#use-the-solution-with-an-amazon-s3-files-shared-file-system)
     - [Extend the solution](#extend-the-solution)
   - [Performance and quality metrics](#performance-and-quality-metrics)
   - [Cost](#cost)
@@ -37,7 +39,6 @@ This solution improves usability and control. It relieves the burden of maintain
 AWS proposes several general usage instance families, optimised compute instance families and 14 accelerated computes. By correlating each instance family specification with FFmpeg hardware acceleration API, we understand it is possible to optimize the performance of FFmpeg:
 
 - **NVIDIA with Intel** GPU-powered Amazon EC2 instances: G4dn instance family is powered by NVIDIA T4 GPUs and Intel Cascade Lake CPUs. G5 instance family is powered by NVIDIA A10G Tensor Core GPU. These GPUs are well suited for video encoding workloads and offer enhanced hardware-based encoding/decoding (NVENC/NVDEC). This blog post ['Optimizing video encoding with FFmpeg using NVIDIA GPU-based Amazon EC2 instances'](https://aws.amazon.com/blogs/compute/optimizing-video-encoding-with-ffmpeg-using-nvidia-gpu-based-amazon-ec2-instances/) compares video encoding performance between CPUs and Nvidia GPUs and to determine the price/performance ratio in different scenarios.
-- **Xilinx with Intel** media accelerator cards: VT1 instances are powered by up to 8 Xilinx® Alveo™ U30 media accelerator cards and support up to 96 vCPUs, 192GB of memory, 25 Gbps of enhanced networking, and 19 Gbps of EBS bandwidth. The [Xilinx Video SDK includes an enhanced version of FFmpeg](https://xilinx.github.io/video-sdk/v1.5/using_FFmpeg.html) that can communicate with the hardware accelerated transcode pipeline in Xilinx devices. As [described in this benchmark](https://aws.amazon.com/fr/blogs/opensource/run-open-source-ffmpeg-at-lower-cost-and-better-performance-on-a-vt1-instance-for-vod-encoding-workloads/), VT1 instances can encode VOD assets up to 52% faster, and achieve up to 75% reduction in cost when compared to C5 and C6i instances.
 - EC2 instances powered by **Intel**: M6i/C6i instances are powered by 3rd generation Intel Xeon Scalable processors (code named Ice Lake) with an all-core turbo frequency of 3.5 GHz.
 - EC2 instances powered by **AWS Graviton**: Encoding video on C7g instances, the last [AWS Graviton processor family](https://aws.amazon.com/ec2/graviton/), costs measured 29% less for H.264 and 18% less for H.265 compared to C6i, as described in this blog post ['Optimized Video Encoding with FFmpeg on AWS Graviton Processors'](https://aws.amazon.com/fr/blogs/opensource/optimized-video-encoding-with-ffmpeg-on-aws-graviton-processors/)
 - EC2 instances powered by **AMD**: M6a instances are powered by 3rd generation AMD EPYC processors (code named Milan).
@@ -49,13 +50,13 @@ When you deploy this solution, scripts will download different packages with dif
 
 ## Architecture
 
-The architecture includes 5 main components:
+The architecture includes 7 main components:
 
-1. Containers images are stored in a Amazon ECR (Elastic Container Registry) registry. Each container includes FFmpeg library with a Python wrapper. Container images are specialized per CPU architecture: ARM64, x86-64, NVIDIA, and Xilinx.
+1. Containers images are stored in a Amazon ECR (Elastic Container Registry) registry. Each container includes FFmpeg library with a Python wrapper. Container images are specialized per CPU architecture: ARM64, x86-64, and NVIDIA.
 2. AWS Batch is configured with a queue and compute environment per CPU architecture. AWS Batch schedules job queues using Spot Instance compute environments only, to optimize cost.
 3. Customers submit jobs through AWS SDKs with the `SubmitJob` operation or use the Amazon API Gateway REST API to easily submit a job with any HTTP library.
 4. All media assets ingested and produced are stored on an Amazon S3 bucket.
-5. [Amazon FSx for Lustre](https://aws.amazon.com/fr/fsx/lustre/) seamlessly integrates with Amazon S3, enabling transparent access to S3 objects as files. Amazon FSx for Lustre is ideally suited for temporary storage and short-term data processing due to its configuration as a Scratch file system. This eliminates the need to move large media assets to local storage.
+5. [Amazon S3 Files](https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-files.html) exposes the objects of that bucket as a shared NFS file system, enabling transparent access to S3 objects as files. It provisions no storage of its own, which suits an intermittent workload: media assets are processed in place instead of being copied to local storage.
 6. Observability is managed by Amazon Cloudwatch and AWS X-Ray. All XRay traces are exported on Amazon S3 to benchmark which compute architecture is better for a specific FFmpeg command.
 7. [Amazon Step Functions](https://aws.amazon.com/step-functions/) reliably processes huge volumes of media assets with FFmpeg on AWS Batch. It handles job failures, and AWS service limits.
 
@@ -65,7 +66,8 @@ The architecture includes 5 main components:
 2. [Implement automatic list of instance types per AWS Region](doc/architecture/0002-implement-automatic-list-of-instance-types-per-aws-region.md)
 3. [Rollback automatic list of instance types per AWS Region](doc/architecture/0003-rollback-automatic-list-of-instance-types-per-aws-region.md)
 4. [Implement Step Functions Dynamic Map](doc/architecture/0004-implement-step-functions-dynamic-map.md)
-5. [Implement FSx Lustre Scratch cluster](doc/architecture/0005-implement-fsx-lustre-scratch-cluster.md)
+5. [Implement FSx Lustre Scratch cluster](doc/architecture/0005-implement-fsx-lustre-scratch-cluster.md) (superseded by 6)
+6. [Replace FSx for Lustre with Amazon S3 Files](doc/architecture/0006-replace-fsx-lustre-with-amazon-s3-files.md)
 
 ### Diagram
 
@@ -82,6 +84,16 @@ You need the following prerequisites to set up the solution:
 - Latest version of [Task](https://taskfile.dev/#/installation)
 - Latest version of [Docker](https://docs.docker.com/get-docker/)
 - Latest version of [Python 3](https://www.python.org/downloads/)
+- [uv](https://docs.astral.sh/uv/getting-started/installation/), which `task setup` uses to install the security scanner in its own environment rather than in the project one
+
+`task setup` then provisions the rest, so nothing below has to be installed by
+hand: the virtual environment and the Python dependencies, [hadolint](https://github.com/hadolint/hadolint)
+which the pre-commit hook of the same name calls as a binary, and the
+[Automated Security Helper](https://github.com/awslabs/automated-security-helper)
+that `task security:ash` runs. Both are pinned, and ASH is taken from its own
+repository: the `automated-security-helper` name on PyPI is squatted by an
+unrelated placeholder package. `~/.local/bin` has to be on the `PATH` for the
+two binaries to be found.
 
 ## Deploy the solution with AWS CDK
 
@@ -99,10 +111,21 @@ task app:docker:login
 task app:docker:build:amd64
 task app:docker:build:arm64
 task app:docker:build:nvidia
-task app:docker:build:xilinx
 ```
 
 CDK will output the new Amazon S3 bucket and the Amazon API Gateway REST endpoint.
+
+### Troubleshooting the deployment
+
+- **`task cdk:deploy` fails with `error: unexpected argument '--all' found`** — the
+  `cdk` command on your `PATH` is **not** the AWS CDK CLI (another tool named `cdk`
+  is shadowing it). Check with `cdk --version`: the AWS CDK prints a version like
+  `2.x.y (build ...)`. If it prints something else, install the AWS CDK CLI
+  (`npm install -g aws-cdk`) or invoke it explicitly with `npx aws-cdk`, and make
+  sure its location comes first on your `PATH`.
+- **`Could not open requirements file: tests/requirements.txt`** — run `task setup`
+  from the repository root (not from a subdirectory); the file is present in the
+  repository and installed automatically by the setup task.
 
 ## Use the solution
 
@@ -119,20 +142,41 @@ Parameters:
 - `input_url`: AWS S3 url synced to the local storage and transformed to local path by the solution
 - `output_file_options`: FFmpeg output file options described in the official documentation
 - `output_url`: AWS S3 url synced from the local storage to AWS S3 storage
-- `compute`: Instances family used to compute the media asset: `intel`, `arm`, `amd`, `nvidia`, `fargate`, `fargate-arm`, `xilinx`
+- `compute`: Instances family used to compute the media asset: `intel`, `arm`, `amd`, `nvidia`, `fargate`, `fargate-arm`
 - `name`: metadata of this job for observability
+
+### Multiple input files
+
+`input_url` accepts **several Amazon S3 URLs separated by commas** (no spaces). The
+solution downloads each one and passes them to FFmpeg in order, as successive
+`-i` inputs. This is useful to combine, for example, an image and an audio track,
+or to concatenate clips.
+
+```python
+command = {
+    "name": "image-plus-audio",
+    # Two inputs -> FFmpeg receives `-i image.png -i audio.mp3`
+    "input_url": "s3://<S3_BUCKET>/assets/image.png,s3://<S3_BUCKET>/assets/audio.mp3",
+    "output_url": "s3://<S3_BUCKET>/output/slideshow.mp4",
+    "output_file_options": "-c:v libx264 -tune stillimage -c:a aac -shortest",
+}
+```
+
+`input_file_options` (when provided) are applied once, before the first `-i`. For
+per-input options or complex assembly, use `-filter_complex` in
+`input_file_options` (see the `concat-videos` example in
+`tests/shared_libraries/commands.py`).
 
 Available FFmpeg versions per compute environment:
 
 | **Compute** | **FFmpeg version per default** | **FFmpeg version(s) available** |
 |-------------|--------------------------------|---------------------------------|
-| intel       | 7.0.1                         | 6.0, 5.1                       |
-| arm         | 7.0.1                         | 6.0, 5.1                       |
-| amd         | 7.0.1                         | 6.0, 5.1                       |
-| nvidia      | 7.0 (snapshot)                | 6.0, 5.1                       |
-| fargate     | 7.0.1                         | 6.0, 5.1                       |
-| fargate-arm | 7.0.1                         | 6.0, 5.1                       |
-| xilinx      | 4.4                           | 4.4                            |
+| intel       | 7.1.5                         | 6.0, 5.1                       |
+| arm         | 7.1.5                         | 6.0, 5.1                       |
+| amd         | 7.1.5                         | 6.0, 5.1                       |
+| nvidia      | 7.1.5                         | 6.0, 5.1                       |
+| fargate     | 7.1.5                         | 6.0, 5.1                       |
+| fargate-arm | 7.1.5                         | 6.0, 5.1                       |
 
 Example using AWS SDK (Python):
 
@@ -148,7 +192,7 @@ s3_bucket_url = "<S3_BUCKET>"
 s3_key_input = "<MEDIA_ASSET>"
 # Amazon S3 key for the output: test/output.mp4
 s3_key_output = "<MEDIA_ASSET>"
-# EC2 instance family: `intel`, `arm`, `amd`, `nvidia`, `fargate`, `xilinx`
+# EC2 instance family: `intel`, `arm`, `amd`, `nvidia`, `fargate`, `fargate-arm`
 compute = "intel"
 job_name = "clip-video"
 
@@ -248,7 +292,7 @@ Example using AWS CLI:
 Parameters of this `input.json are:
 
 - `$.name`: metadata of this job for observability.
-- `$.compute`: Instances family used to compute the media asset : `intel`, `arm`, `amd`, `nvidia`, `xilinx`, `fargate`, `fargate-arm`.
+- `$.compute`: Instances family used to compute the media asset : `intel`, `arm`, `amd`, `nvidia`, `fargate`, `fargate-arm`.
 - `$.input.s3_bucket` and `$.input.s3_prefix`: S3 url of the list of Amazon S3 Objects to be processed by FFMPEG.
 - `$.input.file_options`: FFmpeg input file options described in the official documentation.
 - `$.output.s3_bucket` and `$.output.s3_prefix`: S3 url where all processed media assets will be stored on Amazon S3.
@@ -267,30 +311,59 @@ aws stepfunctions start-execution \
 
 The Amazon S3 url of the processed media is: `s3://{$.output.s3_bucket}{$.output.s3_suffix}{Input S3 object key}{$.output.s3_suffix}`
 
-### Use the solution with Amazon FSx for Lustre cluster
+### Use the solution with an Amazon S3 Files shared file system
 
-For efficient processing of large media files, the solution supports Amazon FSx for Lustre integration. Enable this feature in `/cdk.json`:
+For efficient processing of large media files, the solution supports Amazon S3
+Files integration: the media assets of the data bucket are exposed as a shared NFS
+file system, so jobs read and write them in place instead of copying them to local
+storage. Reads and writes go through the mount and are immediate within the file
+system; what lags is the moment a written file becomes visible as an S3 object to
+a reader using the S3 API, by about 30 to 60 seconds. The file system this
+replaces behaved the same way, its Data Repository Association exporting after
+the write rather than during it. An integration test measures that window
+against the deployed stacks on every pipeline: 41 seconds on the last run, after
+four probes that found nothing. Enable
+this feature in `/cdk.json`:
 
 ```json
 {
-    "batch-ffmpeg:lustre-fs": {
-      "enable": true,
-      "storage_capacity_gi_b": 1200
-    }
+    "batch-ffmpeg:shared-fs:enable": true
 }
 ```
 
-The FFmpeg wrapper transparently converts S3 URLs to lustre filesystem requests when enabled. The integration requires no code changes.
+The FFmpeg wrapper transparently converts S3 URLs to file system paths when
+enabled. The integration requires no code changes.
 
-This feature is not available with `fargate` (<https://github.com/aws/containers-roadmap/issues/650>) and `xilinx` (<https://github.com/Xilinx/video-sdk/issues/85>)
+This feature is not available with the Fargate compute environments `fargate` and `fargate-arm` (<https://github.com/aws/containers-roadmap/issues/650>), which have no host to mount the file system on.
 
-Lustre filesystem file manipulation (preload and release) occurs through the Amazon API Gateway Rest API calls ([API Documentation](doc/api.md)). This enables full integration into media supply chain workflows.
+The compute hosts mount the file system from their launch template user data
+(`infrastructure/constructs/user_data_s3files.txt`), through an access point that
+enforces the POSIX identity `1000:1000` of the non root `ffmpeg` user of the
+containers. The mount point in the containers is `/mnt/s3files`, published to them
+through the `S3FILES_MOUNT_POINT` environment variable.
+
+Unlike the FSx for Lustre file system it replaces (see
+[ADR 6](doc/architecture/0006-replace-fsx-lustre-with-amazon-s3-files.md)), S3
+Files needs no preload and no release: every object of the bucket is directly
+visible as a file. Two behaviours are worth knowing:
+
+- files written through the mount point appear in the S3 bucket asynchronously,
+  in about 30 to 60 seconds;
+- objects uploaded to the bucket outside the solution are presented as
+  `root:root` with `0644`, so the containers read them but cannot overwrite them.
+  That is all the containers do with input assets, so nothing has to be done
+  about it.
+
+The objects the solution writes itself need no manual step: whenever the wrapper
+writes through the S3 API, which is what the `fargate` and `fargate-arm`
+variants do since they have no file system, it also materializes the directories
+of that prefix with the `file-owner`, `file-group` and `file-permissions`
+metadata [S3 Files reads](https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-files-posix-permissions.html),
+stamped with the POSIX identity the container runs as
+(`src/shared_libraries/s3_posix.py`). A prefix a Fargate job wrote in therefore
+stays writable for the EC2 job that mounts it afterwards.
 
 ![Media Supply Chain](doc/media_supply_chain.png)
-
-The solution deployed an AWS System Manager Document `batch-ffmpeg-lustre-preload` which preloads a media asset in the Lustre filesystem. This SSM Document is available through the Amazon API Gateway Rest API ([API Documentation](doc/api.md)).
-
-To release files on the FSx for Lustre filesystem, use the AWS API [Amazon FSx::CreateDataRepositoryTask](https://docs.aws.amazon.com/fsx/latest/APIReference/API_CreateDataRepositoryTask.html) with the type of data repository task `RELEASE_DATA_FROM_FILESYSTEM` or the Amazon API Gateway Rest API ([API Documentation](doc/api.md)).
 
 ### Extend the solution
 

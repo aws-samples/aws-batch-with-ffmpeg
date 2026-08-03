@@ -1,0 +1,139 @@
+#!/bin/bash -ex
+
+echo "AWS Batch for FFMPEG : Mount Amazon S3 Files file system"
+
+s3files_filesystem_id_parameter=%FILE_SYSTEM_ID_PARAMETER%
+s3files_access_point_id_parameter=%ACCESS_POINT_ID_PARAMETER%
+s3files_mountpoint=%MOUNT_POINT%
+
+echo "Linux Kernel:"
+uname -r
+
+# The prerequisites are installed first: the coordinates of the file system are
+# read from SSM Parameter Store below, which needs the AWS CLI, and the AWS CLI
+# is not part of every AMI this script runs on (the ECS optimized AMIs do not
+# ship it).
+#
+# Package names differ between distributions and between repository snapshots,
+# so each install tries the candidate names in order and the caller checks the
+# result rather than trusting the exit code of a single package manager call.
+install_package() {
+  local package_manager="$1"
+  local package
+  for package in "${@:2}"; do
+    echo "Installing package ${package} with ${package_manager}"
+    if "${package_manager}" install --quiet --assumeyes "${package}"; then
+      return 0
+    fi
+    echo "package ${package} is not installable with ${package_manager}" >&2
+  done
+  return 1
+}
+
+# The mount helper of the S3 Files client (amazon-efs-utils >= 3.0.0) provides
+# the "s3files" file system type. botocore is not bundled with the client and
+# the helper needs it to sign the IAM authenticated NFS connection, so it is
+# installed from the distribution repository: the hosts run in
+# PRIVATE_ISOLATED subnets and have no route to PyPI.
+if [ -f "/etc/os-release" ]; then
+  source /etc/os-release
+  if [[ "${VERSION_ID}" == "2" ]]; then
+    echo "Detected Amazon Linux 2, installing the Amazon S3 Files client"
+    amazon-linux-extras install -y amazon-efs-utils || true
+    install_package yum amazon-efs-utils || true
+    install_package yum python3-botocore || true
+    if ! command -v aws > /dev/null 2>&1; then
+      install_package yum awscli awscli-2 || true
+    fi
+  elif [[ "${VERSION_ID}" =~ ^[2][0-9]*$ ]]; then
+    echo "Detected Amazon Linux 2023 (or similar version), installing the Amazon S3 Files client"
+    # Issue: https://github.com/amazonlinux/amazon-linux-2023/issues/397#issuecomment-1760177301
+    while true; do
+    dnf update --assumeyes && break
+    done
+    install_package dnf amazon-efs-utils || true
+    install_package dnf python3-botocore || true
+    if ! command -v aws > /dev/null 2>&1; then
+      install_package dnf awscli-2 awscli || true
+    fi
+  else
+    echo "Unsupported Amazon Linux version for the Amazon S3 Files client"
+  fi
+else
+  echo "Unsupported Amazon Linux version"
+fi
+
+# mount.s3files only exists in amazon-efs-utils 3.0.0 and above: its absence is
+# the check that the installed client actually supports Amazon S3 Files.
+if ! command -v mount.s3files > /dev/null 2>&1; then
+  echo "FATAL: mount.s3files is unavailable, amazon-efs-utils >= 3.0.0 is required, refusing to mount ${s3files_mountpoint}" >&2
+  exit 1
+fi
+
+if ! python3 -c "import botocore" > /dev/null 2>&1; then
+  echo "FATAL: the botocore python package is unavailable, the mount helper cannot authenticate, refusing to mount ${s3files_mountpoint}" >&2
+  exit 1
+fi
+
+if ! command -v aws > /dev/null 2>&1; then
+  echo "FATAL: the AWS CLI is unavailable after the installation attempt, refusing to mount ${s3files_mountpoint}" >&2
+  exit 1
+fi
+
+# The coordinates of the file system are read from SSM Parameter Store at boot
+# instead of being templated at synthesis time, so that the stack owning the
+# hosts holds no cross-stack import on the file system (an import forbids
+# CloudFormation from replacing it).
+#
+# The AWS CLI runs here without any profile or environment to give it a region,
+# and region discovery through IMDS depends on the CLI/botocore version shipped
+# in the AMI. Read the region from IMDSv2 explicitly instead.
+imds_token=$(curl --silent --show-error --fail --max-time 5 --retry 3 --request PUT \
+  --header "X-aws-ec2-metadata-token-ttl-seconds: 300" \
+  "http://169.254.169.254/latest/api/token")
+AWS_DEFAULT_REGION=$(curl --silent --show-error --fail --max-time 5 --retry 3 \
+  --header "X-aws-ec2-metadata-token: ${imds_token}" \
+  "http://169.254.169.254/latest/meta-data/placement/region")
+export AWS_DEFAULT_REGION
+if [ -z "${AWS_DEFAULT_REGION}" ]; then
+  echo "FATAL: cannot read the region from IMDSv2, refusing to mount ${s3files_mountpoint}" >&2
+  exit 1
+fi
+
+# The hosts run in PRIVATE_ISOLATED subnets and reach SSM through a VPC
+# interface endpoint. Retry: the network stack of the instance may not be ready
+# in the first seconds of the boot.
+get_ssm_parameter() {
+  local parameter_name="$1"
+  local value=""
+  local attempt
+  for attempt in 1 2 3 4 5 6; do
+    if value=$(aws ssm get-parameter --name "${parameter_name}" \
+      --query Parameter.Value --output text 2>&1); then
+      if [ -n "${value}" ] && [ "${value}" != "None" ]; then
+        printf '%s' "${value}"
+        return 0
+      fi
+    fi
+    echo "attempt ${attempt}/6 on SSM parameter ${parameter_name} failed (${value}), retrying in 10s" >&2
+    sleep 10
+  done
+  return 1
+}
+
+if ! s3files_filesystem_id=$(get_ssm_parameter "${s3files_filesystem_id_parameter}"); then
+  echo "FATAL: SSM parameter ${s3files_filesystem_id_parameter} is unreadable or empty, refusing to mount ${s3files_mountpoint}" >&2
+  exit 1
+fi
+if ! s3files_access_point_id=$(get_ssm_parameter "${s3files_access_point_id_parameter}"); then
+  echo "FATAL: SSM parameter ${s3files_access_point_id_parameter} is unreadable or empty, refusing to mount ${s3files_mountpoint}" >&2
+  exit 1
+fi
+echo "Amazon S3 Files: ${s3files_filesystem_id} through ${s3files_access_point_id} -> ${s3files_mountpoint}"
+
+mkdir -p "$s3files_mountpoint"
+# The mount helper always adds the tls and iam options, and the VPC has an S3
+# gateway endpoint, so the optimized direct read path is left enabled.
+mount -t s3files -o "accesspoint=${s3files_access_point_id}" "${s3files_filesystem_id}" "${s3files_mountpoint}"
+
+echo "AWS Batch for FFMPEG : Mount Amazon S3 Files file system : END"

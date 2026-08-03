@@ -1,0 +1,39 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/awslabs/automated-security-helper/refs/heads/main/automated_security_helper/schemas/AshConfig.json
+#
+# Configuration of the AWS Labs Automated Security Helper.
+#
+# Install it from its own source, pinned, and never by that name from PyPI,
+# where the name is squatted by an unrelated placeholder package:
+#
+#   uv tool install "git+https://github.com/awslabs/automated-security-helper.git@v3.5.8"
+#
+# Run it from the repository root with `ash --mode local`.
+#
+# Everything not set here keeps the default of the ASH version in use, so this
+# file stays readable and does not freeze defaults that upstream may improve.
+# Findings are suppressed at the line they concern, with `# nosec`, as the rest
+# of this repository already does -- not from here, so that the reason sits next
+# to the code and holds whoever runs bandit.
+project_name: aws-batch-ffmpeg
+
+global_settings:
+  ignore_paths:
+    # `src/dist` holds the Lambda deployment package built by
+    # `task app:dist:lambda`. It is gitignored (.gitignore:142) and bundles the
+    # vendored dependencies of the function, botocore included. Leaving it in
+    # scope reported 237 findings against third party data files, among them
+    # the dummy access keys of the botocore request examples, which
+    # detect-secrets rates critical. None of it is code this repository writes.
+    - path: src/dist
+      reason: Build output, gitignored, vendored third party dependencies
+
+converters:
+  # The archive converter unpacks archives into the output directory, and
+  # `ignore_paths` cannot reach what lands there: it matches paths relative to
+  # the source directory, and the extracted copies live outside it (see
+  # global_ignore_paths in the detect-secrets scanner plugin). No archive is
+  # tracked by git in this repository, so the only archive the converter ever
+  # finds is that gitignored Lambda package. Re-enable this if an archive ever
+  # becomes part of the sources.
+  archive:
+    enabled: false

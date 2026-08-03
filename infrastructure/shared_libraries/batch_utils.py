@@ -37,7 +37,7 @@ def get_instance_classes(proc_name, region):
 
 
 def get_container_definition(
-    self, proc_name, job_definition_container_env, lustre_volumes
+    self, proc_name, job_definition_container_env, shared_fs_volumes
 ):
     """Create a container definition for a given processor type.
 
@@ -45,7 +45,7 @@ def get_container_definition(
         self: The CDK construct instance.
         proc_name (str): The name of the processor type.
         job_definition_container_env (dict): Environment variables for the container.
-        lustre_volumes (list): List of Lustre volumes to mount.
+        shared_fs_volumes (list): List of shared file system volumes to mount.
 
     Returns:
         Union[batch.EcsFargateContainerDefinition, batch.EcsEc2ContainerDefinition]:
@@ -82,16 +82,8 @@ def get_container_definition(
             "gpu": config.get("gpu"),
             "cpu": JOB_DEF_CPU,
             "memory": cdk.Size.mebibytes(JOB_DEF_MEMORY),
-            "volumes": lustre_volumes,
+            "volumes": shared_fs_volumes,
         }
-
-        if proc_name == "xilinx":
-            linux_parameters = batch.LinuxParameters(self, f"{proc_name}-linux-param")
-            for device in config["linux_parameters"]["devices"]:
-                linux_parameters.add_device(batch.Device(**device))
-            container_def_args["linux_parameters"] = linux_parameters
-            container_def_args["privileged"] = config["privileged"]
-            container_def_args["environment"].update(config["environment"])
 
         return batch.EcsEc2ContainerDefinition(
             self, f"container-def-{proc_name}", **container_def_args

@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## version v1.1.0
+
+### Added
+
+- Amazon S3 Files shared file system, replacing FSx for Lustre: the media assets of the data bucket are exposed as an NFS file system on `/mnt/s3files`, so jobs read and write them in place instead of copying them to local storage. Enable it with `batch-ffmpeg:shared-fs:enable` in `cdk.json`. See [ADR 6](doc/architecture/0006-replace-fsx-lustre-with-amazon-s3-files.md).
+- Enabling that file system needs no manual preparation: whenever the solution writes an object through the S3 API, it materializes the directories of that prefix with the POSIX ownership metadata S3 Files reads, stamped with the identity the container runs as.
+- An integration test that measures how long the bucket takes to expose the output of a job written through the file system, so the window is a measurement instead of a claim.
+- Unit tests of the architecture diagrams: a diagram edited without re-exporting, an edge pointing at a deleted shape, a missing image or a stale component count now fail the build.
+- Security scanning with the AWS Labs Automated Security Helper, `task security:ash`, configured in `.ash/.ash.yaml`.
+
+### Changed
+
+- Containers run as the non root `ffmpeg` user, IAM policies are narrowed to least privilege, and the Systems Manager inputs are validated.
+- The architecture diagrams describe the deployed architecture again: Amazon S3 Files, and the two states the Step Functions state machine actually declares.
+- The HTTP API documentation is regenerated from the deployed API.
+- Container builds take FFmpeg from the GitHub mirror and freetype from the Savannah mirror, and clone nv-codec-headers over HTTP/1.1, which removes the build failures those sources caused.
+- The CI runner image moves to Ubuntu Noble with the current CDK, and deploys are serialized so two pipelines no longer update the same stack at once.
+- The stacks are decoupled: the API stack no longer imports the job definition export of the Batch stack, and the Batch stack resolves the shared file system through SSM parameters instead of CloudFormation exports, which is what blocked replacing it.
+- The pre-commit chain runs and passes: `detect-aws-credentials` no longer requires static credentials, `detect-private-key` is added, and bandit moves to a release that does not import `pbr` at runtime.
+- bandit no longer skips B608 across the whole repository; the three queries that raise it carry the reason on the line itself.
+
+### Removed
+
+- Xilinx VT1 support, the instances no longer existing: the `xilinx` compute value, its container image, its CI jobs and its documentation are gone.
+- FSx for Lustre, its scratch cluster and the Systems Manager Automation that preloaded it.
+- The commented FSx release and Systems Manager preload endpoints of the API stack, and four unreferenced screenshots of the state machine.
+
 ## version v1.0.0
 
 ### Changed

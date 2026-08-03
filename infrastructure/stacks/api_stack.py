@@ -3,11 +3,9 @@ import aws_cdk as cdk
 from aws_cdk import aws_apigateway as apigw
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_stepfunctions as sfn
-from aws_cdk import aws_fsx as fsx
-from aws_cdk import aws_ssm as ssm
 from aws_cdk import aws_logs as cwlogs
 from constructs import Construct
-from typing import List, Optional
+from typing import List
 from infrastructure.stacks.batch_processing_stack import BatchJob
 import time
 
@@ -19,14 +17,10 @@ class ApiStack(Stack):
         construct_id: str,
         batch_jobs: List[BatchJob],
         sfn_state_machine: sfn.IStateMachine,
-        lustre_fs: Optional[fsx.LustreFileSystem] = None,
-        ssm_document: Optional[ssm.CfnDocument] = None,
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
-        self.lustre_fs = lustre_fs
-        self.ssm_document = ssm_document
         self.api_role = self.create_api_role()
         self.api = self.create_api()
         self.create_batch_endpoints(batch_jobs)
@@ -80,10 +74,6 @@ class ApiStack(Stack):
                     "batch:DescribeJobs",
                     "states:StartExecution",
                     "states:DescribeExecution",
-                    "fsx:CreateDataRepositoryTask",
-                    "fsx:DescribeDataRepositoryTasks",
-                    "ssm:StartAutomationExecution",
-                    "ssm:GetAutomationExecution",
                 ],
                 resources=["*"],
             )
@@ -161,7 +151,7 @@ class ApiStack(Stack):
             {{
                 "jobName":"api-{job.processor_name}-ffmpeg-{today}",
                 "jobQueue":"{job.job_queue_name}",
-                "jobDefinition":"{job.job_definition_name}",
+                "jobDefinition":"batch-ffmpeg-job-definition-{job.processor_name}",
                 "parameters":$input.json('$')
                 #set($instance = $input.json('$.instance_type'))
                 #if( $instance !='""' )
@@ -477,191 +467,3 @@ class ApiStack(Stack):
                 validate_request_parameters=True,
             ),
         )
-
-
-# https://docs.aws.amazon.com/fsx/latest/APIReference/API_CreateDataRepositoryTask.html
-# BUG Waiting : API Gateway - Integration Request - AWS Service - FSx (Issue: BPL-71543)
-# def _api_fsx_release(
-#     self,
-#     api: apig.RestApi,
-#     api_resource: apig.IResource,
-#     api_role: iam.IRole,
-#     lustre_fs: fsx.LustreFileSystem,
-# ):
-#     api_role.add_to_policy(
-#         iam.PolicyStatement(
-#             actions=["fsx:CreateDataRepositoryTask"],
-#             resources=[
-#                 f"arn:aws:fsx:{self._region}:{self._account}:file-system/{lustre_fs.file_system_id}:*"
-#             ],
-#         )
-#     )
-#
-#     # AWS Integation
-#     request_model = api.add_model(
-#         "fsx-release-request-model",
-#         content_type="application/json",
-#         schema=apig.JsonSchema(
-#             schema=apig.JsonSchemaVersion.DRAFT4,
-#             title="fsx-release-request-schema",
-#             type=apig.JsonSchemaType.OBJECT,
-#             properties={
-#                 "path": apig.JsonSchema(type=apig.JsonSchemaType.STRING),
-#             },
-#         ),
-#     )
-#     integration_request_mapping_template = f"""
-#         {{
-#             "FileSystemId": "{lustre_fs.file_system_id}",
-#             "Paths": [$input.json('$.path')],
-#             "Type": "RELEASE_DATA_FROM_FILESYSTEM"
-#         }}
-#     """
-#     integration_response_mapping_template = """
-#     {
-#         "status":$input.json('$.Status'),
-#         "taskId":$input.json('$.TaskId'),
-#         "type":$input.json('$.Type')
-#     }
-#     """
-#     integration_response = apig.IntegrationResponse(
-#         status_code="200",
-#         response_templates={
-#             "application/json": integration_response_mapping_template
-#         },
-#     )
-#
-#     api_integration_options = apig.IntegrationOptions(
-#         credentials_role=api_role,
-#         integration_responses=[integration_response],
-#         request_templates={
-#             "application/json": integration_request_mapping_template
-#         },
-#         passthrough_behavior=apig.PassthroughBehavior.NEVER,
-#         request_parameters={
-#             "integration.request.header.Content-Type": "'application/x-www-form-urlencoded'"
-#         },
-#     )
-#     api_integration = apig.AwsIntegration(
-#         service="fsx",
-#         action="CreateDataRepositoryTask",
-#         options=api_integration_options,
-#     )
-#
-#     method_response = apig.MethodResponse(
-#         status_code="200",
-#     )
-#     api_resource_describe = api_resource.add_resource("release")
-#     api_resource_describe.add_method(
-#         "POST",
-#         integration=api_integration,
-#         method_responses=[method_response],
-#         authorization_type=apig.AuthorizationType.IAM,
-#         request_models={"application/json": request_model},
-#         request_parameters=None,
-#         request_validator=apig.RequestValidator(
-#             self,
-#             "fsx-release-body-validator",
-#             rest_api=api,
-#             validate_request_body=True,
-#             validate_request_parameters=True,
-#         ),
-#     )
-
-# https://docs.aws.amazon.com/fsx/latest/APIReference/API_DescribeDataRepositoryTasks.html
-# BUG Waiting : API Gateway - Integration Request - AWS Service - FSx (Issue: BPL-71543)
-# def _api_fsx_describe(
-#     self,
-#     api: apig.RestApi,
-#     api_resource: apig.IResource,
-#     api_role: iam.IRole,
-#     lustre_fs: fsx.LustreFileSystem,
-# ):
-#     api_role.add_to_policy(
-#         iam.PolicyStatement(
-#             actions=["fsx:DescribeDataRepositoryTasks"],
-#             resources=[
-#                 f"arn:aws:fsx:{self._region}:{self._account}:file-system/{lustre_fs.file_system_id}:*"
-#             ],
-#         )
-#     )
-#
-#     # AWS Integation
-#     request_model = api.add_model(
-#         "fsx-describe-request-model",
-#         content_type="application/json",
-#         schema=apig.JsonSchema(
-#             schema=apig.JsonSchemaVersion.DRAFT4,
-#             title="fsx-describe-request-schema",
-#             type=apig.JsonSchemaType.OBJECT,
-#             properties={
-#                 "taskId": apig.JsonSchema(type=apig.JsonSchemaType.STRING),
-#             },
-#         ),
-#     )
-#     integration_request_mapping_template = f"""
-#         {{
-#             "TaskIds": [$input.json('$.taskId')]
-#         }}
-#     """
-#     integration_response_mapping_template = """
-#     {
-#         "status":$input.json('$.Status'),
-#         "taskId":$input.json('$.TaskId'),
-#         "type":$input.json('$.Type')
-#     }
-#     """
-#     integration_response = apig.IntegrationResponse(
-#         status_code="200",
-#         response_templates={
-#             "application/json": integration_response_mapping_template
-#         },
-#     )
-#
-#     api_integration_options = apig.IntegrationOptions(
-#         credentials_role=api_role,
-#         integration_responses=[integration_response],
-#         request_templates={
-#             "application/json": integration_request_mapping_template
-#         },
-#         passthrough_behavior=apig.PassthroughBehavior.NEVER,
-#         request_parameters={
-#             "integration.request.header.Content-Type": "'application/x-www-form-urlencoded'"
-#         },
-#     )
-#     api_integration = apig.AwsIntegration(
-#         service="fsx",
-#         action="DescribeDataRepositoryTasks",
-#         options=api_integration_options,
-#     )
-#
-#     method_response = apig.MethodResponse(
-#         status_code="200",
-#     )
-#     api_resource_describe = api_resource.add_resource("describe")
-#     api_resource_describe.add_method(
-#         "POST",
-#         integration=api_integration,
-#         method_responses=[method_response],
-#         authorization_type=apig.AuthorizationType.IAM,
-#         request_models={"application/json": request_model},
-#         request_parameters=None,
-#         request_validator=apig.RequestValidator(
-#             self,
-#             "fsx-describe-body-validator",
-#             rest_api=api,
-#             validate_request_body=True,
-#             validate_request_parameters=True,
-#         ),
-#     )
-
-# BUG Waiting API Gateway - Integration Request - AWS Service - System Manager (Issue: BPL-71545)
-# https://docs.aws.amazon.com/systems-manager/latest/APIReference/API_GetAutomationExecution.html
-# def _api_ssm_preload(
-#     self,
-#     api: apig.RestApi,
-#     api_resource: apig.IResource,
-#     api_role: iam.IRole,
-#     ssm_document,
-# ):
-#     print("wait")

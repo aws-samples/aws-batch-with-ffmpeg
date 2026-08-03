@@ -7,6 +7,7 @@ import subprocess  # nosec B404
 import sys
 import tempfile
 import time
+import traceback
 from typing import List, Tuple
 
 import boto3
@@ -16,6 +17,7 @@ from botocore.exceptions import ClientError
 
 from shared_libraries import aws
 from shared_libraries import aws_s3
+from shared_libraries import s3_posix
 from shared_libraries.aws_s3 import S3Url
 from ffmpeg_quality_metrics import FfmpegQualityMetrics as ffqm
 
@@ -49,17 +51,17 @@ def get_ssm_parameter(ssm_client, parameter_name: str, default_value: str) -> st
 
 
 def prepare_assets(
-    input_url: str, output_url: str, fsx_lustre_mount_point: str, s3_client
+    input_url: str, output_url: str, s3files_mount_point: str, s3_client
 ) -> Tuple[List[str], str, tempfile.TemporaryDirectory]:
     """Prepare media assets by downloading from S3 url to local storage or
-    translate urls from S3 to FSx for Lustre path."""
+    translate urls from S3 to Amazon S3 Files path."""
     s3_output_url = S3Url(output_url)
     s3_inputs = input_url.replace(" ", "").split(",")
 
-    if not fsx_lustre_mount_point:
+    if not s3files_mount_point:
         # Create a temporary directory for S3 downloads
         logging.info(
-            "No FSx for Lustre mount point provided, using temporary directory"
+            "No Amazon S3 Files mount point provided, using temporary directory"
         )
         tmp_dir = tempfile.TemporaryDirectory(prefix="ffmpeg_workdir_")
         logging.info(f"Created temporary directory: {tmp_dir.name}")
@@ -73,17 +75,17 @@ def prepare_assets(
             tmp_dir.cleanup()
             sys.exit(1)
     else:
-        # Use FSx for Lustre
-        logging.info("Using FSx for Lustre mount point")
+        # Use Amazon S3 Files
+        logging.info("Using Amazon S3 Files mount point")
         tmp_dir = None
-        output_file_path = os.path.join(fsx_lustre_mount_point, s3_output_url.key)
+        output_file_path = os.path.join(s3files_mount_point, s3_output_url.key)
         logging.info(f"Output file path: {output_file_path}")
         input_files_path = []
         for s3_input in s3_inputs:
             s3_input_url = S3Url(s3_input)
-            input_file_path = os.path.join(fsx_lustre_mount_point, s3_input_url.key)
+            input_file_path = os.path.join(s3files_mount_point, s3_input_url.key)
             if not os.path.isfile(input_file_path):
-                logging.error(f"File {input_file_path} not found on Lustre")
+                logging.error(f"File {input_file_path} not found on Amazon S3 Files")
                 raise FileNotFoundError(
                     errno.ENOENT, os.strerror(errno.ENOENT), input_file_path
                 )
@@ -171,6 +173,14 @@ def upload_to_s3(s3_client, output_file_path, output_url):
     """Upload the output file or directory to S3."""
     s3_output_url = S3Url(output_url)
     try:
+        # An object written with the S3 API only implies its parent directories,
+        # and Amazon S3 Files presents an implied directory as root:root, which
+        # the uid of the containers cannot write in. Materializing them here is
+        # what lets a job that mounts this prefix later create its own output
+        # directory, without any manual metadata fix on the bucket.
+        s3_posix.ensure_object_directories(
+            s3_client, s3_output_url.bucket, s3_output_url.key
+        )
         if "%" in s3_output_url.key:
             logging.info("Upload to S3 the whole directory of the output")
             # Sync output directory
@@ -219,6 +229,10 @@ def save_quality_metrics(s3_client, s3_bucket: str, document: dict):
     """Save quality metrics to an S3 bucket."""
     key = f"metrics/ffqm/{time.strftime('year=%Y/month=%b/day=%d')}/{document['AWS_BATCH_JQ_NAME']}_{document['AWS_BATCH_CE_NAME']}_{document['AWS_BATCH_JOB_ID']}.json"
     logging.info(f"Saving quality metrics to S3 : {s3_bucket}/{key}")
+    # The metrics tree is written with the S3 API in both modes, so it needs the
+    # same directory objects as the outputs : a job mounting the file system must
+    # be able to write its own metrics file next to the ones already there.
+    s3_posix.ensure_object_directories(s3_client, s3_bucket, key)
     s3_client.put_object(Bucket=s3_bucket, Key=key, Body=json.dumps(document))
 
 
@@ -298,10 +312,15 @@ def main(
         "AWS_BATCH_JQ_NAME": os.getenv("AWS_BATCH_JQ_NAME", "local"),
         "AWS_BATCH_CE_NAME": os.getenv("AWS_BATCH_CE_NAME", "local"),
         "S3_BUCKET": os.getenv("S3_BUCKET"),
-        "FSX_MOUNT_POINT": os.getenv("FSX_MOUNT_POINT"),
+        "S3FILES_MOUNT_POINT": os.getenv("S3FILES_MOUNT_POINT"),
     }
 
     logging.info("Environment variables : %r", env_vars)
+
+    # Temporary directory is only created by prepare_assets when S3 is used. It is
+    # initialized here so the finally block can always safely inspect it, even if
+    # prepare_assets raises before returning.
+    tmp_dir = None
 
     # Start X-Ray segment
     xray_recorder.begin_segment("batch-ffmpeg-job")
@@ -314,14 +333,14 @@ def main(
         )
         segment.put_annotation("application", "batch-ffmpeg")
         for key, value in {**locals(), **env_vars}.items():
-            if key not in ["ssm_client", "s3_client", "env_vars", "segment"]:
+            if key not in ["ssm_client", "s3_client", "env_vars", "segment", "tmp_dir"]:
                 segment.put_annotation(key, str(value))
 
         input_files_path, output_file_path, tmp_dir = prepare_assets(
             input_url=input_url,
             output_url=output_url,
             s3_client=s3_client,
-            fsx_lustre_mount_point=env_vars["FSX_MOUNT_POINT"],
+            s3files_mount_point=env_vars["S3FILES_MOUNT_POINT"],
         )
 
         if env_vars["AWS_BATCH_JQ_NAME"] == "batch-ffmpeg-job-queue-nvidia":
@@ -335,8 +354,8 @@ def main(
             output_file_path,
         )
         execute_ffmpeg_command(command_list)
-        # Upload output to S3 if not using FSx for Lustre
-        if not env_vars["FSX_MOUNT_POINT"]:
+        # Upload output to S3 if not using Amazon S3 Files
+        if not env_vars["S3FILES_MOUNT_POINT"]:
             upload_to_s3(s3_client, output_file_path, output_url)
 
         # Calculate video quality metrics
@@ -351,7 +370,18 @@ def main(
         sys.exit(0)
     except Exception as e:
         logging.error(f"An error occurred: {str(e)}")
-        xray_recorder.current_segment().add_exception(e)
+        # X-Ray instrumentation is best effort : a telemetry failure must never
+        # hide or replace the business error reported above.
+        try:
+            segment = xray_recorder.current_segment()
+            if segment:
+                # Entity.add_exception(exception, stack, remote=False) : stack is a
+                # traceback.extract_stack() formatted stack trace.
+                segment.add_exception(e, traceback.extract_tb(e.__traceback__))
+        except Exception as instrumentation_error:
+            logging.warning(
+                f"Unable to record the exception in X-Ray: {instrumentation_error!r}"
+            )
         sys.exit(1)
     finally:
         # Clean up the temporary directory if it was created
