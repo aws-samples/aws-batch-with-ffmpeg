@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## version v1.1.1
+
+### Security
+
+- The three free-form ffmpeg option fields (`global_options`, `input_file_options`, `output_file_options`) are validated in the wrapper before the command is built: a token carrying a network or indirection protocol prefix (`http`, `tcp`, `concat`, `subfile`, ...) or a resource-reaching flag (`-i`, `-protocol_whitelist`, `-dump_attachment`, `-attach`) is rejected. The wrapper is the point the API caller cannot bypass.
+- ffmpeg runs with `-protocol_whitelist file,crypto,data,pipe` before every input, so an input is bound to local protocols only. Together with the option validation this closes the SSRF and local-file-read paths through the submitted options.
+- The Batch compute hosts enforce IMDSv2 (`HttpTokens: required`) on the launch template, so a request forged from inside a container cannot reach the instance metadata credential path over IMDSv1.
+- The worker security group no longer allows all outbound traffic: egress is scoped to HTTPS (443) and the Amazon S3 Files NFS port (2049). The subnets are isolated with no NAT or internet gateway, so HTTPS reaches only the VPC endpoints, never the internet.
+- The REST API carries a resource policy restricting `execute-api:Invoke` to principals of the account that owns the API, in defense in depth on top of the IAM authorizer on every method.
+
 ## version v1.1.0
 
 ### Added

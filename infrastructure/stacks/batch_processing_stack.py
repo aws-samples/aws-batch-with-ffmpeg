@@ -11,6 +11,7 @@ from infrastructure.config.batch_config import (
     PROCESSOR_CONFIGS,
     S3FILES_ACCESS_POINT_ID_PARAMETER,
     S3FILES_FILE_SYSTEM_ID_PARAMETER,
+    S3FILES_NFS_PORT,
 )
 
 
@@ -80,13 +81,40 @@ class BatchProcessingStack(Stack):
             self.export_value(job.job_definition.job_definition_arn)
 
     def create_security_group(self) -> ec2.SecurityGroup:
-        return ec2.SecurityGroup(
+        security_group = ec2.SecurityGroup(
             self,
             "BatchSecurityGroup",
             vpc=self.vpc,
             description="Security group for AWS Batch FFMPEG workers",
-            allow_all_outbound=True,
+            # Egress is scoped below instead of left open. allow_all_outbound
+            # permits every port and protocol; the workers only ever need
+            # HTTPS to the AWS service endpoints and NFS to the Amazon S3 Files
+            # mount targets. Narrowing to those two closes the arbitrary
+            # outbound path a compromised ffmpeg job would use for SSRF or data
+            # exfiltration. The subnets are PRIVATE_ISOLATED with no NAT and no
+            # internet gateway, so the 443 rule reaches only the in-VPC
+            # interface endpoints and the S3 gateway endpoint prefix list, never
+            # the internet; a CIDR rule cannot express the S3 prefix list
+            # without importing the gateway endpoint cross-stack, and the
+            # isolated topology already bounds where 443 can go.
+            allow_all_outbound=False,
         )
+        security_group.add_egress_rule(
+            peer=ec2.Peer.any_ipv4(),
+            connection=ec2.Port.tcp(443),
+            description="HTTPS to AWS service endpoints (ECR including image layers via S3, S3, Logs, STS, SSM, X-Ray); the isolated subnets have no internet route",
+        )
+        # The S3 Files mount targets live in the storage stack: peering their
+        # security group here would create a cross-stack cycle (the batch stack
+        # already depends on landing-zone and storage). The VPC CIDR is the
+        # narrowest peer expressible without that cycle, the same choice the
+        # storage stack makes for the mount-target ingress rule.
+        security_group.add_egress_rule(
+            peer=ec2.Peer.ipv4(self.vpc.vpc_cidr_block),
+            connection=ec2.Port.tcp(S3FILES_NFS_PORT),
+            description="Amazon S3 Files NFS mount port",
+        )
+        return security_group
 
     def create_instance_role(self) -> iam.Role:
         role = iam.Role(

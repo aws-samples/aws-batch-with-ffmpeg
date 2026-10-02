@@ -232,6 +232,12 @@ class BatchJobConstruct(Construct):
                 "lt-" + proc_name + "-" + short_hash,
                 launch_template_name="batch-ffmpeg-lt-" + proc_name + "-" + short_hash,
                 user_data=multipart_user_data,
+                # Enforce IMDSv2 (HttpTokens: required) so a request forged from
+                # inside a container, e.g. through an ffmpeg input, cannot reach
+                # the instance metadata credential path with IMDSv1. The boot
+                # script already uses IMDSv2 token calls, so this does not break
+                # host startup.
+                require_imdsv2=True,
             )
             return launch_template
 

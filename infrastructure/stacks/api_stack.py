@@ -88,6 +88,25 @@ class ApiStack(Stack):
             "FFmpegBatchApi",
             rest_api_name="api-batch-ffmpeg",
             description="FFMPEG managed by AWS Batch",
+            # Defense in depth on top of the IAM authorizer on every method:
+            # the resource policy restricts invocation to principals of the
+            # account that owns the API. Without it, IAM auth with no resource
+            # policy lets any AWS principal that its own account allows to call
+            # execute-api reach the endpoint cross-account. Scope to the org
+            # (aws:PrincipalOrgID) instead if the API is shared across accounts.
+            policy=iam.PolicyDocument(
+                statements=[
+                    iam.PolicyStatement(
+                        effect=iam.Effect.ALLOW,
+                        principals=[iam.AnyPrincipal()],
+                        actions=["execute-api:Invoke"],
+                        resources=["execute-api:/*"],
+                        conditions={
+                            "StringEquals": {"aws:PrincipalAccount": self.account}
+                        },
+                    )
+                ]
+            ),
             deploy_options=apigw.StageOptions(
                 metrics_enabled=True,
                 caching_enabled=True,

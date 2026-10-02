@@ -145,6 +145,94 @@ def nvidia_smi():
     )
 
 
+class UnsafeFfmpegOptionError(ValueError):
+    """A user supplied ffmpeg option was rejected by the allowlist."""
+
+
+# ffmpeg protocols the job legitimately needs. The wrapper always hands ffmpeg
+# local paths: inputs are either downloaded from S3 into a temp directory or
+# read from the Amazon S3 Files mount point, and the output is a local path too.
+# So only local protocols are allowed, which blocks the network protocols
+# (http, tcp, ...) that turn a crafted option or input into SSRF or data
+# exfiltration, and the indirection protocols (concat, subfile) that reach
+# other resources. The value is applied per input in create_ffmpeg_command.
+FFMPEG_PROTOCOL_WHITELIST = "file,crypto,data,pipe"
+
+# Rejected in any user supplied option token. The protocol prefixes map a token
+# onto a network or indirection protocol regardless of -protocol_whitelist
+# (which only guards -i inputs); the flags let an option field reach a resource
+# or smuggle an input past the whitelist that is attached to the managed -i.
+_FORBIDDEN_OPTION_SUBSTRINGS = (
+    "http://",
+    "https://",
+    "ftp://",
+    "ftps://",
+    "tcp://",
+    "udp://",
+    "rtp://",
+    "rtmp://",
+    "rtmps://",
+    "rtsp://",
+    "srt://",
+    "sftp://",
+    "ssh://",
+    "gopher://",
+    "telnet://",
+    "file:",
+    "concat:",
+    "subfile:",
+    "data:",
+    "pipe:",
+    "async:",
+    "cache:",
+)
+_FORBIDDEN_OPTION_FLAGS = (
+    "-i",
+    "-protocol_whitelist",
+    "-dump_attachment",
+    "-attach",
+)
+
+
+def validate_ffmpeg_options(label: str, options: str) -> None:
+    """Reject a user supplied ffmpeg option string that could reach a resource
+    outside the managed S3 inputs and output.
+
+    The three option fields (global_options, input_file_options,
+    output_file_options) are free text controlled by the API caller and are
+    spliced into the ffmpeg argv. ffmpeg's own protocol and demuxer options turn
+    that into arbitrary file read/write and SSRF, so each token is checked here,
+    at the only point the client cannot bypass, before the command is built.
+
+    Args:
+        label: The name of the option field, used in the error message.
+        options: The raw option string, or a falsy value when absent.
+
+    Raises:
+        UnsafeFfmpegOptionError: A token carries a forbidden protocol prefix or
+            a forbidden flag.
+    """
+    if not options:
+        return
+    for token in shlex.split(options):
+        lowered = token.lower()
+        for forbidden in _FORBIDDEN_OPTION_SUBSTRINGS:
+            if forbidden in lowered:
+                raise UnsafeFfmpegOptionError(
+                    f"{label}: token {token!r} contains the forbidden "
+                    f"protocol prefix {forbidden!r}"
+                )
+        if token.startswith("-") and (
+            lowered in _FORBIDDEN_OPTION_FLAGS
+            # ffmpeg flags accept a :stream_specifier suffix (e.g.
+            # -dump_attachment:t), so the base of the flag is checked too.
+            or lowered.split(":", 1)[0] in _FORBIDDEN_OPTION_FLAGS
+        ):
+            raise UnsafeFfmpegOptionError(
+                f"{label}: the option {token!r} is not allowed in {label}"
+            )
+
+
 def create_ffmpeg_command(
     global_options,
     input_file_options,
@@ -153,7 +241,19 @@ def create_ffmpeg_command(
     output_file_path,
 ):
     """Create the FFmpeg command list based on the provided options and file
-    paths."""
+    paths.
+
+    The three option fields are validated first and the protocol whitelist is
+    applied per input, so a crafted option or input cannot make ffmpeg reach a
+    network or indirection protocol.
+
+    Raises:
+        UnsafeFfmpegOptionError: A user supplied option was rejected.
+    """
+    validate_ffmpeg_options("global_options", global_options)
+    validate_ffmpeg_options("input_file_options", input_file_options)
+    validate_ffmpeg_options("output_file_options", output_file_options)
+
     command_list = ["ffmpeg"]
     if global_options:
         command_list.extend(shlex.split(global_options))
@@ -161,7 +261,12 @@ def create_ffmpeg_command(
         if input_file_options:
             command_list.extend(shlex.split(input_file_options))
         for file in input_files_path:
-            command_list.extend(["-i", file])
+            # -protocol_whitelist is an input option reset between inputs, so it
+            # is repeated before each -i to bound every input to local
+            # protocols only.
+            command_list.extend(
+                ["-protocol_whitelist", FFMPEG_PROTOCOL_WHITELIST, "-i", file]
+            )
     if output_file_path:
         if output_file_options:
             command_list.extend(shlex.split(output_file_options))

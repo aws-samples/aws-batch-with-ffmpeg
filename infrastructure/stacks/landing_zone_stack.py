@@ -82,7 +82,9 @@ class LandingZoneStack(Stack):
 
         # Create gateway endpoints
         # The gateway endpoint is also what lets the S3 Files client read the
-        # objects directly from the bucket, its fastest read path.
+        # objects directly from the bucket, its fastest read path. It is also
+        # the path Fargate tasks use to pull the ECR image layers (ECR stores
+        # them in an AWS managed S3 bucket).
         self.vpc.add_gateway_endpoint(
             "S3Endpoint",
             service=ec2.GatewayVpcEndpointAwsService.S3,
