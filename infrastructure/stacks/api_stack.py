@@ -9,6 +9,20 @@ from typing import List
 from infrastructure.stacks.batch_processing_stack import BatchJob
 import time
 
+# Bounds on the free-form ffmpeg option fields, in defense in depth of the
+# allowlist the wrapper enforces: a bounded length and no control characters.
+FFMPEG_OPTIONS_MAX_LENGTH = 2048
+FFMPEG_OPTIONS_PATTERN = r"^[^\u0000-\u001f]*$"
+
+
+def ffmpeg_options_schema() -> apigw.JsonSchema:
+    """JSON schema of a free-form ffmpeg option string."""
+    return apigw.JsonSchema(
+        type=apigw.JsonSchemaType.STRING,
+        max_length=FFMPEG_OPTIONS_MAX_LENGTH,
+        pattern=FFMPEG_OPTIONS_PATTERN,
+    )
+
 
 class ApiStack(Stack):
     def __init__(
@@ -141,15 +155,9 @@ class ApiStack(Stack):
                 title="ffmpeg-request-schema",
                 type=apigw.JsonSchemaType.OBJECT,
                 properties={
-                    "global_options": apigw.JsonSchema(
-                        type=apigw.JsonSchemaType.STRING
-                    ),
-                    "input_file_options": apigw.JsonSchema(
-                        type=apigw.JsonSchemaType.STRING
-                    ),
-                    "output_file_options": apigw.JsonSchema(
-                        type=apigw.JsonSchemaType.STRING
-                    ),
+                    "global_options": ffmpeg_options_schema(),
+                    "input_file_options": ffmpeg_options_schema(),
+                    "output_file_options": ffmpeg_options_schema(),
                     "output_url": apigw.JsonSchema(type=apigw.JsonSchemaType.STRING),
                     "name": apigw.JsonSchema(type=apigw.JsonSchemaType.STRING),
                     "instance_type": apigw.JsonSchema(type=apigw.JsonSchemaType.STRING),
@@ -325,9 +333,7 @@ class ApiStack(Stack):
                             "s3_prefix": apigw.JsonSchema(
                                 type=apigw.JsonSchemaType.STRING
                             ),
-                            "file_options": apigw.JsonSchema(
-                                type=apigw.JsonSchemaType.STRING
-                            ),
+                            "file_options": ffmpeg_options_schema(),
                         },
                     ),
                     "output": apigw.JsonSchema(
@@ -339,18 +345,12 @@ class ApiStack(Stack):
                             "s3_prefix": apigw.JsonSchema(
                                 type=apigw.JsonSchemaType.STRING
                             ),
-                            "file_options": apigw.JsonSchema(
-                                type=apigw.JsonSchemaType.STRING
-                            ),
+                            "file_options": ffmpeg_options_schema(),
                         },
                     ),
                     "global": apigw.JsonSchema(
                         type=apigw.JsonSchemaType.OBJECT,
-                        properties={
-                            "options": apigw.JsonSchema(
-                                type=apigw.JsonSchemaType.STRING
-                            )
-                        },
+                        properties={"options": ffmpeg_options_schema()},
                     ),
                 },
             ),

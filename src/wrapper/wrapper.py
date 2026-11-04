@@ -2,6 +2,7 @@ import errno
 import json
 import logging
 import os
+import re
 import shlex
 import subprocess  # nosec B404
 import sys
@@ -186,35 +187,278 @@ _FORBIDDEN_OPTION_SUBSTRINGS = (
     "async:",
     "cache:",
 )
-_FORBIDDEN_OPTION_FLAGS = (
-    "-i",
-    "-protocol_whitelist",
-    "-dump_attachment",
-    "-attach",
+# The only ffmpeg flags a caller may pass, keyed by their base name (the part
+# before an optional :stream_specifier). A flag absent from these sets is
+# rejected, so a flag that names a file (-vstats_file, -passlogfile,
+# -filter_script, -sdp_file, -progress, ...) never reaches ffmpeg. Flags in the
+# first set take no value; every other allowed flag consumes the next token.
+_BOOLEAN_FLAGS = frozenset(
+    {
+        "an",
+        "vn",
+        "sn",
+        "dn",
+        "y",
+        "n",
+        "shortest",
+        "hide_banner",
+        "nostdin",
+        "stats",
+        "nostats",
+        "copyts",
+        "start_at_zero",
+        "re",
+    }
 )
+_VALUED_FLAGS = frozenset(
+    {
+        # codecs and encoder tuning
+        "c",
+        "codec",
+        "vcodec",
+        "acodec",
+        "scodec",
+        "preset",
+        "tune",
+        "profile",
+        "level",
+        "crf",
+        "cq",
+        "qp",
+        "q",
+        "qscale",
+        "b",
+        "ab",
+        "maxrate",
+        "minrate",
+        "bufsize",
+        "g",
+        "keyint_min",
+        "sc_threshold",
+        "bf",
+        "refs",
+        "rc",
+        "pix_fmt",
+        "x264-params",
+        "x265-params",
+        "vtag",
+        "tag",
+        "strict",
+        "threads",
+        # geometry, rate and audio layout
+        "s",
+        "r",
+        "aspect",
+        "ar",
+        "ac",
+        "sample_fmt",
+        "channel_layout",
+        "fps_mode",
+        "vsync",
+        # timing and selection
+        "ss",
+        "sseof",
+        "t",
+        "to",
+        "frames",
+        "vframes",
+        "aframes",
+        "map",
+        "map_metadata",
+        "map_chapters",
+        "metadata",
+        "disposition",
+        "start_number",
+        "max_muxing_queue_size",
+        # container, muxer and logging
+        "f",
+        "movflags",
+        "segment_time",
+        "hls_time",
+        "hls_list_size",
+        "loglevel",
+        "v",
+        # hardware decode and scaling (GPU job definitions)
+        "hwaccel",
+        "hwaccel_output_format",
+        "hwaccel_device",
+        "resize",
+        "extra_hw_frames",
+        # filters, checked separately as a filter graph
+        "vf",
+        "af",
+        "filter",
+        "filter_complex",
+        "lavfi",
+    }
+)
+_FILTERGRAPH_FLAGS = frozenset({"vf", "af", "filter", "filter_complex", "lavfi"})
+
+# Formats accepted by -f. Demuxers that read other resources from their own
+# content (concat, lavfi, image2pipe, the devices) are absent on purpose.
+_ALLOWED_FORMATS = frozenset(
+    {
+        "mp4",
+        "mov",
+        "matroska",
+        "webm",
+        "mpegts",
+        "mp3",
+        "adts",
+        "aac",
+        "wav",
+        "flac",
+        "ogg",
+        "opus",
+        "image2",
+        "gif",
+        "null",
+        "hls",
+        "dash",
+        "segment",
+        "ipod",
+        "ismv",
+        "mxf",
+        "rawvideo",
+    }
+)
+
+# Filters accepted in a filter graph. Every one of them only transforms the
+# frames it is given: the source filters that open a file or a URL themselves
+# (movie, amovie), the ones that load a file or a plugin (subtitles, ass,
+# lut3d, frei0r, ladspa, lv2, sendcmd, zmq, the dnn filters) and the ones that
+# write side files (vidstab, signature, psnr/ssim stats) are absent on purpose.
+_ALLOWED_FILTERS = frozenset(
+    {
+        "scale",
+        "scale_npp",
+        "scale_cuda",
+        "fps",
+        "framerate",
+        "crop",
+        "pad",
+        "setsar",
+        "setdar",
+        "format",
+        "transpose",
+        "hflip",
+        "vflip",
+        "rotate",
+        "trim",
+        "atrim",
+        "setpts",
+        "asetpts",
+        "tpad",
+        "apad",
+        "concat",
+        "overlay",
+        "split",
+        "asplit",
+        "hstack",
+        "vstack",
+        "xstack",
+        "xfade",
+        "acrossfade",
+        "amix",
+        "amerge",
+        "pan",
+        "channelmap",
+        "volume",
+        "aresample",
+        "aformat",
+        "atempo",
+        "loudnorm",
+        "dynaudnorm",
+        "yadif",
+        "bwdif",
+        "fade",
+        "afade",
+        "null",
+        "anull",
+        "hwupload",
+        "hwdownload",
+        "hwupload_cuda",
+        "thumbnail",
+        "select",
+        "aselect",
+        "tile",
+        "palettegen",
+        "paletteuse",
+        "colorspace",
+        "zscale",
+        "unsharp",
+        "boxblur",
+        "gblur",
+        "eq",
+        "hue",
+        "drawbox",
+        "drawtext",
+        "hqdn3d",
+        "deblock",
+        "chromakey",
+        "colorkey",
+        "alphamerge",
+        "showwaves",
+    }
+)
+# Filter arguments that make an otherwise allowed filter read a file whose
+# content ends up in the output. drawtext fontfile only selects glyph shapes
+# and stays allowed.
+_FORBIDDEN_FILTER_ARGUMENTS = ("textfile",)
+_FILTER_LABELS = re.compile(r"^\s*(\[[^\]]*\]\s*)*")
+_FILTER_NAME = re.compile(r"^[A-Za-z0-9_]+")
+_NUMBER = re.compile(r"^-?\d+(\.\d+)?$")
+
+
+def _validate_filtergraph(label: str, graph: str) -> None:
+    """Reject a filter graph naming a filter outside the allowlist.
+
+    The graph is split on every ',' and ';', including escaped or quoted ones.
+    That yields a superset of ffmpeg's own filter boundaries, so every filter
+    ffmpeg would instantiate is checked, and a fragment of quoted text that does
+    not start with an allowed filter name fails closed.
+    """
+    lowered = graph.lower()
+    for argument in _FORBIDDEN_FILTER_ARGUMENTS:
+        if argument in lowered:
+            raise UnsafeFfmpegOptionError(
+                f"{label}: the filter argument {argument!r} is not allowed"
+            )
+    for segment in re.split(r"[,;]", graph):
+        body = _FILTER_LABELS.sub("", segment, count=1).strip()
+        if not body:
+            continue
+        match = _FILTER_NAME.match(body)
+        name = match.group(0).lower() if match else body
+        if name not in _ALLOWED_FILTERS:
+            raise UnsafeFfmpegOptionError(
+                f"{label}: the filter {name!r} is not allowed in {label}"
+            )
 
 
 def validate_ffmpeg_options(label: str, options: str) -> None:
-    """Reject a user supplied ffmpeg option string that could reach a resource
-    outside the managed S3 inputs and output.
+    """Accept a user supplied ffmpeg option string only if every token is an
+    allowed flag or the value of one.
 
     The three option fields (global_options, input_file_options,
     output_file_options) are free text controlled by the API caller and are
-    spliced into the ffmpeg argv. ffmpeg's own protocol and demuxer options turn
-    that into arbitrary file read/write and SSRF, so each token is checked here,
-    at the only point the client cannot bypass, before the command is built.
+    spliced into the ffmpeg argv, where ffmpeg's own flags, demuxers and filter
+    sources turn them into arbitrary file read/write and SSRF. Only allowlisted
+    flags, -f formats and filters are accepted, and no token may stand alone, so
+    a caller cannot add an input, an output or a side file. This runs at the
+    only point the client cannot bypass, before the command is built.
 
     Args:
         label: The name of the option field, used in the error message.
         options: The raw option string, or a falsy value when absent.
 
     Raises:
-        UnsafeFfmpegOptionError: A token carries a forbidden protocol prefix or
-            a forbidden flag.
+        UnsafeFfmpegOptionError: A token is outside the allowlist.
     """
     if not options:
         return
-    for token in shlex.split(options):
+    tokens = shlex.split(options)
+    for token in tokens:
         lowered = token.lower()
         for forbidden in _FORBIDDEN_OPTION_SUBSTRINGS:
             if forbidden in lowered:
@@ -222,15 +466,34 @@ def validate_ffmpeg_options(label: str, options: str) -> None:
                     f"{label}: token {token!r} contains the forbidden "
                     f"protocol prefix {forbidden!r}"
                 )
-        if token.startswith("-") and (
-            lowered in _FORBIDDEN_OPTION_FLAGS
-            # ffmpeg flags accept a :stream_specifier suffix (e.g.
-            # -dump_attachment:t), so the base of the flag is checked too.
-            or lowered.split(":", 1)[0] in _FORBIDDEN_OPTION_FLAGS
-        ):
+
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        if not token.startswith("-") or _NUMBER.match(token):
+            # A bare token is an extra input or output path to ffmpeg.
+            raise UnsafeFfmpegOptionError(
+                f"{label}: the token {token!r} is not an allowed option"
+            )
+        # ffmpeg flags accept a :stream_specifier suffix (e.g. -c:v).
+        flag = token[1:].split(":", 1)[0].lower()
+        if flag in _BOOLEAN_FLAGS:
+            index += 1
+            continue
+        if flag not in _VALUED_FLAGS:
             raise UnsafeFfmpegOptionError(
                 f"{label}: the option {token!r} is not allowed in {label}"
             )
+        if index + 1 >= len(tokens):
+            raise UnsafeFfmpegOptionError(f"{label}: the option {token!r} has no value")
+        value = tokens[index + 1]
+        if flag in _FILTERGRAPH_FLAGS:
+            _validate_filtergraph(label, value)
+        elif flag == "f" and value.lower() not in _ALLOWED_FORMATS:
+            raise UnsafeFfmpegOptionError(
+                f"{label}: the format {value!r} is not allowed in {label}"
+            )
+        index += 2
 
 
 def create_ffmpeg_command(

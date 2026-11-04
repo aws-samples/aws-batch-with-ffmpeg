@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## version v1.1.2
+
+### Security
+
+- The ffmpeg option fields are validated against an allowlist instead of a denylist: only listed flags, `-f` formats and filters are accepted, and every token must be a flag or its value. This closes the local file read through filter sources (`movie`, `amovie`, `subtitles`), `drawtext=textfile` and side-file flags (`-vstats_file`, `-passlogfile`), which v1.1.1 still accepted.
+- The API request models bound every ffmpeg option field to 2048 characters with no control characters, on both the Batch and the Step Functions endpoints.
+- The README documents who can submit jobs: principals of the deploying account allowed `execute-api:Invoke` on the API.
+
 ## version v1.1.1
 
 ### Security
@@ -21,6 +29,7 @@ All notable changes to this project will be documented in this file.
 - An integration test that measures how long the bucket takes to expose the output of a job written through the file system, so the window is a measurement instead of a claim.
 - Unit tests of the architecture diagrams: a diagram edited without re-exporting, an edge pointing at a deleted shape, a missing image or a stale component count now fail the build.
 - Security scanning with the AWS Labs Automated Security Helper, `task security:ash`, configured in `.ash/.ash.yaml`.
+- AWS Fargate on Linux ARM64 (Graviton): the `fargate-arm` serverless compute family runs jobs on the ARM64 Fargate architecture (GitHub issue #11).
 
 ### Changed
 

@@ -42,7 +42,7 @@ AWS proposes several general usage instance families, optimised compute instance
 - EC2 instances powered by **Intel**: M6i/C6i instances are powered by 3rd generation Intel Xeon Scalable processors (code named Ice Lake) with an all-core turbo frequency of 3.5 GHz.
 - EC2 instances powered by **AWS Graviton**: Encoding video on C7g instances, the last [AWS Graviton processor family](https://aws.amazon.com/ec2/graviton/), costs measured 29% less for H.264 and 18% less for H.265 compared to C6i, as described in this blog post ['Optimized Video Encoding with FFmpeg on AWS Graviton Processors'](https://aws.amazon.com/fr/blogs/opensource/optimized-video-encoding-with-ffmpeg-on-aws-graviton-processors/)
 - EC2 instances powered by **AMD**: M6a instances are powered by 3rd generation AMD EPYC processors (code named Milan).
-- Serverless compute with **Fargate**: Fargate allows to have a completely serverless architecture for your batch jobs. With Fargate, every job receives the exact amount of CPU and memory that it requests.
+- Serverless compute with **Fargate**: Fargate allows to have a completely serverless architecture for your batch jobs. With Fargate, every job receives the exact amount of CPU and memory that it requests. Both x86-64 (`fargate`) and ARM64 / Graviton (`fargate-arm`) architectures are supported.
 
 ## Disclaimer And Data Privacy Notice
 
@@ -144,6 +144,23 @@ Parameters:
 - `output_url`: AWS S3 url synced from the local storage to AWS S3 storage
 - `compute`: Instances family used to compute the media asset: `intel`, `arm`, `amd`, `nvidia`, `fargate`, `fargate-arm`
 - `name`: metadata of this job for observability
+
+The three option fields are checked against an allowlist before ffmpeg runs: only
+common encoding, timing, mapping and hardware flags, a fixed set of `-f` formats
+and filters that transform frames are accepted, and every token must be a flag or
+its value. A flag or filter that reads or writes another file (`movie`,
+`subtitles`, `drawtext=textfile`, `-vstats_file`, `-passlogfile`, ...) is
+rejected and the job fails. To allow another flag or filter, extend the
+allowlist in `src/wrapper/wrapper.py`.
+
+### Who can submit jobs
+
+The REST API uses IAM authorization, and its resource policy only accepts
+principals of the account that deploys the solution. Inside that account, any
+principal whose IAM policy allows `execute-api:Invoke` on the API can submit
+jobs, including a broad `execute-api:Invoke` on `*`. Grant that permission only
+to the roles meant to run media jobs, scoped to the API ARN, and avoid wildcard
+`execute-api` grants in the account.
 
 ### Multiple input files
 
